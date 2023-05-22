@@ -1,6 +1,5 @@
 #include <stdio.h>
 
-// [Rcpp::Export]]
-void test_func() {
+void test_link() {
   printf("testing\n");
 }

@@ -16,3 +16,13 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+
+static const R_CallMethodDef CallEntries[] = {
+    {"_CCxAAAA_execute_commands", (DL_FUNC) &_CCxAAAA_execute_commands, 0},
+    {NULL, NULL, 0}
+};
+
+RcppExport void R_init_CCxAAAA(DllInfo *dll) {
+    R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+    R_useDynamicSymbols(dll, FALSE);
+}

@@ -1,6 +1,10 @@
 setwd("~/dev/R_packages/GPUrun")
 require(Rcpp)
 
+# library(GPUrun)
+# commands1 <- GPUrun::compile_commands("")
+# GPUrun::run_commands(commands1)
+
 test_compile_commands <- function() {
   # START TIME:
   ptm <- proc.time()
