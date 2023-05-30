@@ -13,8 +13,8 @@ compile_commands <- function(expr_ls) {
   
   # get the list of variable names in an ordered list
   # to allow machine generated code to access them by index
-  # var_names <- get_ordered_vars(expr_ls)
-  
+  var_names <- unique(unlist(lapply(expr_ls, all.vars)))
+
   # write machine generated code to .cu file that will 
   # compiled with included .cpp files
   # write_kernel(expr_ls, var_names)
@@ -37,33 +37,38 @@ compile_commands <- function(expr_ls) {
   devtools::install(pkg = pseudo_pkg_dir, 
                     args = paste0("--library=", install_loc))
   
-  # get location of compiled binary shared library object
-  binary_file <- file.path(install_loc, current_pkg_key, RLIBS, 
-                           paste0(current_pkg_key, ".so"))
-  
-  # copy the binary into the installed libs temporary directory
-  file.copy(binary_file, file.path(install_loc, RLIBS))
-  
-  # remove the temporary library that was installed
-  # unlink(file.path(install_loc, current_pkg_key), recursive = TRUE)
-  
   # increment the key values in package meta files
   update_build(current_pkg_key, pseudo_pkg_dir)
   
   return(
     list(
-      key = current_pkg_key
+      key = current_pkg_key,
+      vars = var_names
     )
   )
 }
 
 
-# Top level function to run compiled commands in the input envrionment
-run_commands <- function(compiled_commands) {
+# Top level function to run compiled commands in the input environment
+run_commands <- function(compiled_commands, eval_env) {
+  
+  # get compiled temp lib loaded to the namespace
   compile_path <- system.file("compile", package = "GPUrun")
   temp_path <- file.path(compile_path, INSTALL_LOC)
   library(compiled_commands$key, lib.loc = temp_path,
           character.only = T)
+  # bind the variables in the compiled_command object to compiled memory
+  eval(parse(text = paste0(compiled_commands$key, 
+                           "_bind_vars(compiled_commands$vars, eval_env)")))
+  # eval the commands with parallel compiled code
   eval(parse(text = paste0(compiled_commands$key, "_execute_commands()")))
+  
+  # update the R variables in the evaled environment with the 
+  # values retrieved from the compiled run of the commands
+  # and free the variables in compiled memory
+  eval(parse(text = paste0(compiled_commands$key, 
+                           "_update_vars(compiled_commands$vars, eval_env)")))
+  
+  # unload the temporary package
   unloadNamespace(compiled_commands$key)
 }

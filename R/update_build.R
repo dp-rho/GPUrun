@@ -1,15 +1,26 @@
+# Package structure files updates
 PACKAGE_LINE <- 1
 TITLE_LINE <- 3
 DYN_LIB_LINE <- 1
-RCPP_EXP_LINE <- 12
-RCPP_CALL_LINE <- 21
-RCPP_INIT_LINE <- 25
-RCPP_FUN_INDEX <- 3
+
+# RcppExports.cpp updates
 RCPP_FILE_NAME <- "RcppExports.cpp"
-RCPP_FUN_NAME <- "execute_commands"
-R_FUN_LINE <- 2
-R_CALL_LINE <- 3
+RCPP_EXP_LINES <- c(12, 21, 32)
+RCPP_ARGS <- list(c(), c("SEXP varSEXP", "SEXP dimensionsSEXP"),
+                  c("SEXP indexSEXP"))
+RCPP_CALL_LINES <- c(44, 45, 46)
+RCPP_INIT_LINE <- 50
+RCPP_FUN_INDEX <- 3
+RCPP_FUN_NAMES <- c("execute_commands", "bind_var", "write_data")
+
+# RcppExports.R file updates
 R_FILE_NAME <- "RcppExports.R"
+R_FUN_LINES <- c(2, 6, 17)
+R_FUN_NAMES <- c("execute_commands", "bind_vars", "update_vars")
+R_FUN_INDENTS <- c(1, 2, 2)
+R_ARGS <- list(c(), c("numeric_var", "dimension"), c("i"))
+R_ASSIGN_TO <- c("", "", "data_vec <- ")
+R_CALL_LINES <- c(3, 13, 19)
 
 
 # Top level function called to update the meta information necessary
@@ -45,31 +56,50 @@ update_key <- function(cur_key) {
 # Update the RcppExports.cpp file that names the function callable by
 # the .Call interface in the R session
 update_exports <- function(cur_key, file_loc) {
-  dll_call_pattern <- paste0("_", cur_key, "_", RCPP_FUN_NAME)
   file_contents <- readLines(file_loc)
-  updated_line <- gsub("^((\\S+\\s+){2})(\\S+)(.*)$", 
-                       paste0("\\1", dll_call_pattern, "()\\4"),
-                       file_contents[RCPP_EXP_LINE])
-  file_contents[RCPP_EXP_LINE] <- updated_line
-  updated_line <- gsub("\\{\"(.*?)\", \\(DL_FUNC\\) &(.*?), 0\\}", 
-                       paste0("{\\\"", dll_call_pattern, "\", (DL_FUNC) &", 
-                              dll_call_pattern, ", 0}"),
-                       file_contents[RCPP_CALL_LINE])
-  file_contents[RCPP_CALL_LINE] <- updated_line
+  
+  for (i in seq_along(RCPP_FUN_NAMES)) {
+    dll_call_pattern <- paste0("_", cur_key, "_", RCPP_FUN_NAMES[i])
+    rcpp_args <- RCPP_ARGS[[i]]
+    updated_line <- paste("RcppExport", "SEXP", 
+                          paste0(dll_call_pattern, "(", 
+                                 paste0(rcpp_args, collapse = ", "),
+                                 ")"),
+                          "{")
+    file_contents[RCPP_EXP_LINES[i]] <- updated_line
+    updated_line <- paste0("    {\"", dll_call_pattern, "\", (DL_FUNC) &", 
+                           dll_call_pattern, ", ", 
+                           as.character(length(rcpp_args)), "},")
+    file_contents[RCPP_CALL_LINES[i]] <- updated_line
+  }
   file_contents[RCPP_INIT_LINE] <- paste0("RcppExport void R_init_", cur_key, 
                                           "(DllInfo *dll) {")
   writeLines(file_contents, file_loc)
 }
 
 update_R <- function(cur_key, file_loc) {
-  R_call_pattern <- paste0(cur_key, "_", RCPP_FUN_NAME)
   file_contents <- readLines(file_loc)
-  updated_line <- gsub("(.*) <- function\\(\\) \\{", 
-                       paste0(R_call_pattern, ' <- function() {'),
-                       file_contents[R_FUN_LINE])
-  file_contents[R_FUN_LINE] <- updated_line
-  file_contents[R_CALL_LINE] <- paste0("  invisible(.Call(`_", 
-                                       R_call_pattern, "`))")
+  
+  for (i in seq_along(R_FUN_NAMES)) {
+    R_call_pattern <- paste0(cur_key, "_", R_FUN_NAMES[i])
+    Cpp_call_pattern <- paste0("_", cur_key, "_", RCPP_FUN_NAMES[i])
+    R_fun_line <- R_FUN_LINES[i]
+    R_call_line <- R_CALL_LINES[i]
+    R_args <- R_ARGS[[i]]
+    updated_line <- gsub("(.*) <- function\\((.*)\\) \\{", 
+                         paste0(R_call_pattern, ' <- function(\\2) {'),
+                         file_contents[R_fun_line])
+    file_contents[R_fun_line] <- updated_line
+    file_contents[R_call_line] <- paste0(paste0(rep("  ", R_FUN_INDENTS[i]), 
+                                                collapse = ""),
+                                         R_ASSIGN_TO[i],
+                                         "invisible(.Call(",
+                                         paste(c(paste0("`", Cpp_call_pattern,
+                                                        "`"),
+                                                 R_args), collapse = ", "),
+                                         "))")
+  }
+  
   writeLines(file_contents, file_loc)
 }
 

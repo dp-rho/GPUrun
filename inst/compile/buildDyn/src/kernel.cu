@@ -1,43 +1,61 @@
 #include "commands.h"
 #include "cuda_headers.h"
 
+__constant__ Rvar gpu_vars[MAX_VARS];
 
-// Kernel function to add the elements of two arrays
+
+/*
+ * Kernel function ran on the GPU
+ */
+
 __global__
-void add(int n, float *x, float *y)
+void add(double* out, int var_count)
 {
-  for (int i = 0; i < n; i++)
-    y[i] = x[i] + y[i];
-}
-
-void call_device() {
-  int N = 1<<20;
-  float *x, *y;
-
-  // Allocate Unified Memory – accessible from CPU or GPU
-  cudaMallocManaged(&x, N*sizeof(float));
-  cudaMallocManaged(&y, N*sizeof(float));
-
-  // initialize x and y arrays on the host
-  for (int i = 0; i < N; i++) {
-    x[i] = 1.0f;
-    y[i] = 2.0f;
+  double sum = 0;
+  for (int i = 0; i < var_count; i++) {
+    sum += gpu_vars[i].data[0];
+    gpu_vars[i].data[0]++;
   }
 
-  // Run kernel on 1M elements on the GPU
-  add<<<1, 1>>>(N, x, y);
+  *out = sum;
+}
+
+
+/*
+ * Top level function called from .cpp code to start the kernel
+ */
+
+void call_device() {
+  
+  store_vars();
+
+  double* result;
+  cudaMallocManaged(&result, sizeof(double));
+
+  // Run kernel on the GPU
+  add<<<1, 1>>>(result, g_var_count);
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
 
-  // Check for errors (all values should be 3.0f)
-  float maxError = 0.0f;
-  for (int i = 0; i < N; i++)
-    maxError = fmax(maxError, fabs(y[i]-3.0f));
-  //std::cout << "Max error: " << maxError << std::endl;
-  printf("Max error: %f\n", maxError);
+  printf("Result is: %f\n", *result);
 
-  // Free memory
-  cudaFree(x);
-  cudaFree(y);
+  cudaFree(result);
+
 }
+
+
+/*
+ * Copies variable info stored in CPU memory to __constant__ GPU memory
+ */
+
+void store_vars() {
+  printf("g_var_count: %d\n", g_var_count);
+  cudaError_t err = cudaMemcpyToSymbol(gpu_vars, g_vars, sizeof(Rvar) * g_var_count);
+  if (err != cudaSuccess) {
+    printf("CUDA error while copying Rvars to __constant__ memory: %s\n", cudaGetErrorString(err));
+  }
+
+  cudaDeviceSynchronize();
+}
+
