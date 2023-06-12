@@ -7,6 +7,6 @@ extern void call_device();
 // [[Rcpp::export]]
 void execute_commands() {
 
-  /* Implemented in call_device.cu  */
-	call_device();
+  /* Implemented in kernel.cu  */
+  call_device();
 }
