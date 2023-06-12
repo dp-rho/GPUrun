@@ -1,6 +1,7 @@
 #include "commands.h"
 #include "cuda_headers.h"
 
+/* Memory for Rvar structures stored in __constant__ access memory for faster execution */
 __constant__ Rvar gpu_vars[MAX_VARS];
 
 
@@ -27,6 +28,7 @@ void add(double* out, int var_count)
 
 void call_device() {
   
+  /* Copy the Rvars into __constant__ memory for faster execution in kernel */
   store_vars();
 
   double* result;
