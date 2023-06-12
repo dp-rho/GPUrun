@@ -57,9 +57,11 @@ run_commands <- function(compiled_commands, eval_env) {
   temp_path <- file.path(compile_path, INSTALL_LOC)
   library(compiled_commands$key, lib.loc = temp_path,
           character.only = T)
+  
   # bind the variables in the compiled_command object to compiled memory
   eval(parse(text = paste0(compiled_commands$key, 
                            "_bind_vars(compiled_commands$vars, eval_env)")))
+  
   # eval the commands with parallel compiled code
   eval(parse(text = paste0(compiled_commands$key, "_execute_commands()")))
   
