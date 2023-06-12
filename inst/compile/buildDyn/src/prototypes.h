@@ -22,4 +22,8 @@ extern void memcpy_to_host(void*, void*, size_t);
 
 /* Functions in kernel.cu that prepare __constant__ memory for execution on GPU */
 
+/* Function which stores Rvar structures in __constant__ memory */
 extern void store_vars();
+
+/* Function which calls the machine generated kernel code */
+extern void call_device();
