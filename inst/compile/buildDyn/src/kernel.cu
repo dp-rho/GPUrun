@@ -10,15 +10,11 @@ __constant__ Rvar gpu_vars[MAX_VARS];
  */
 
 __global__
-void add(double* out, int var_count)
+void kernel()
 {
-  double sum = 0;
-  for (int i = 0; i < var_count; i++) {
-    sum += gpu_vars[i].data[0];
-    gpu_vars[i].data[0]++;
-  }
-
-  *out = sum;
+  // [[Start.kernel]]
+  // Machine generated code
+  // [[End.kernel]]
 }
 
 
@@ -31,19 +27,12 @@ void call_device() {
   /* Copy the Rvars into __constant__ memory for faster execution in kernel */
   store_vars();
 
-  double* result;
-  cudaMallocManaged(&result, sizeof(double));
-
   // Run kernel on the GPU
-  add<<<1, 1>>>(result, g_var_count);
+  kernel<<<1, 1>>>();
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
-
-  printf("Result is: %f\n", *result);
-
-  cudaFree(result);
-
+  
 }
 
 
@@ -52,12 +41,10 @@ void call_device() {
  */
 
 void store_vars() {
-  printf("g_var_count: %d\n", g_var_count);
   cudaError_t err = cudaMemcpyToSymbol(gpu_vars, g_vars, sizeof(Rvar) * g_var_count);
   if (err != cudaSuccess) {
     printf("CUDA error while copying Rvars to __constant__ memory: %s\n", cudaGetErrorString(err));
   }
-
   cudaDeviceSynchronize();
 }
 
