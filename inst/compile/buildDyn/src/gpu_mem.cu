@@ -65,7 +65,11 @@ void free_device(void* mem) {
  */
 
 void memcpy_to_device(void* dev_mem, void* host_mem, size_t size) {
-  cudaMemcpy(dev_mem, host_mem, size, cudaMemcpyHostToDevice);
+  cudaError_t err = cudaMemcpy(dev_mem, host_mem, size, cudaMemcpyHostToDevice);
+  if (err != cudaSuccess) {
+    printf("CUDA error: Failed to copy memory from host to device (%s)\n",
+           cudaGetErrorString(err));
+  }
 }
 
 
@@ -74,7 +78,12 @@ void memcpy_to_device(void* dev_mem, void* host_mem, size_t size) {
  */
 
 void memcpy_to_host(void* host_mem, void* dev_mem, size_t size) {
-  cudaMemcpy(host_mem, dev_mem, size, cudaMemcpyDeviceToHost);
+  cudaError_t err = cudaMemcpy(host_mem, dev_mem, size, cudaMemcpyDeviceToHost);
+  if (err != cudaSuccess) {
+    printf("CUDA error: Failed to copy memory from device to host (%s)\n",
+           cudaGetErrorString(err));
+  }
+
 }
 
 

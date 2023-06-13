@@ -17,7 +17,7 @@ compile_commands <- function(expr_ls) {
 
   # write machine generated code to .cu file that will 
   # compiled with included .cpp files
-  # write_kernel(expr_ls, var_names)
+  write_kernel(expr_ls, var_names)
   
   # get location of compile directory
   compile_path <- system.file("compile", package = "GPUrun")
@@ -42,6 +42,7 @@ compile_commands <- function(expr_ls) {
   
   return(
     list(
+      exprs = expr_ls,
       key = current_pkg_key,
       vars = var_names
     )
