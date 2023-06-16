@@ -15,7 +15,7 @@ int g_var_count = 0;
 // [[Rcpp::export]]
 void bind_var(NumericVector var, NumericVector dimensions) {
 
-  /* Initialize the var_info structure which will hold all preserved information */
+  /* Initialize the Rvar structure which will hold all preserved information */
   Rvar new_var = {
     .data = NULL,
     .len = (int) var.size(),
@@ -23,16 +23,11 @@ void bind_var(NumericVector var, NumericVector dimensions) {
     .cdim = (int) dimensions[COL_DIM]
   };
 
-  /* Allocated the data array for the var_info and copy R object data */
+  /* Allocated the data array for the Rvar and copy R object data */
   new_var.data = (double*) malloc_device(sizeof(double) * new_var.len);
   memcpy_to_device(new_var.data, var.begin(), sizeof(double) * new_var.len);
 
-  double result;
-  memcpy_to_host(&result, new_var.data, sizeof(double));
-  printf("var len: %d\n", new_var.len);
-  printf("var data: %f\n", result);
-
-  /* Save the pointer to the var_info in the global variable array  */
+  /* Save the Rvar in the global variable array  */
   g_vars[g_var_count++] = new_var;
 }
 
