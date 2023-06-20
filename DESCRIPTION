@@ -1,11 +1,11 @@
 Package: GPUrun
 Type: Package
-Title: What the Package Does in One 'Title Case' Line
+Title: Automated GPU Compilation Execution
 Version: 1.0
 Date: 2023-05-08
 Author: Your Name
 Maintainer: Your Name <your@email.com>
-Description: One paragraph description of what the package does as one or more full sentences.
+Description: Interprets and compiles basic R expressions operating on vectors and matrices using machine generated CUDA code in combination with included C++ code.  The compiled objects are linked and loaded into the R session as an .so object via R's package infastructure.  These compiled commands can then be evaluated in parallel any number of times using an NVIDIA GPU.
 License: GPL (>= 2)
 Imports: Rcpp (>= 1.0.10)
 LinkingTo: Rcpp
