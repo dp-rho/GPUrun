@@ -25,5 +25,8 @@ extern void memcpy_to_host(void*, void*, size_t);
 /* Function which stores Rvar structures in __constant__ memory */
 extern void store_vars();
 
+/* Function which stores length info for iteration loops in __constant__ memory */
+extern void store_iter_lens();
+
 /* Function which calls the machine generated kernel code */
 extern void call_device();

@@ -6,11 +6,15 @@ END_FLAG <- 1
 OTHER_FLAG <- 0
 GPU_MAPPING <- "gpu_vars"
 DATA_FIELD <- "data"
+DATA_ID <- "data_index"
 THREAD_ID <- "thread_index"
+DEFAULT_INDEX <- "DEFAULT_DATA_INDEX"
 DATA_LENGTH <- "len"
 DELIM <- " "
 OPEN_EXPR <- "("
 CLOSE_EXPR <- ")"
+SYNC_GRID <- "grid.sync();"
+EVAL_ITR <- "_eval_itr"
 
 DEFAULT_DEPTH <- 2
 
@@ -22,6 +26,11 @@ PARSED_ASSIGN_FUN <- "="
 
 RAW_FOR_FUN <- paste0(OPEN_EXPR, "for")
 PARSED_FOR_FUN <- "for"
+
+STORE_RESULT <- "evals";
+THREADS_PER_BLOCK <- "THREADS_PER_BLOCK"
+
+g_loop_count <- 0
 
 # Writes kernel code to the relevant section of kernel.cu
 write_kernel <- function(expr_ls, var_names) {
@@ -41,13 +50,15 @@ write_kernel <- function(expr_ls, var_names) {
   
   # Write the parsed expressions to fill in the kernel code
   lines_to_write <- c(kernel_lines[1:start_index],
-                      indent_lines("if (thread_index < max_index) {", DEFAULT_DEPTH - 1))
+                      indent_lines(paste0("if (", DATA_ID, " < max_index) {"), DEFAULT_DEPTH - 1))
   for (expr in expr_ls) {
     lines_to_write <- c(lines_to_write, indent_lines(write_expr(expr, var_names), DEFAULT_DEPTH),
-                        indent_lines("sync_blocks();", DEFAULT_DEPTH))
+                        indent_lines(SYNC_GRID, DEFAULT_DEPTH))
   }
   lines_to_write <- c(lines_to_write, indent_lines("}", DEFAULT_DEPTH - 1),
                       kernel_lines[stop_index:length(kernel_lines)])
+  
+  g_loop_count <- 0
   
   # write the updated lines to the kernel file
   base::writeLines(lines_to_write, kernel_path)
@@ -70,7 +81,7 @@ indent_lines <- function(lines, depth) {
 
 write_expr <- function(expr, var_names) {
   expr_char_vec <- paste0(racket_char_vec(expr), collapse = "")
-  parsed_lines <- parse_expr(expr_char_vec, var_names)
+  parsed_lines <- parse_expr(expr_char_vec, var_names, 0)
   final_lines <- paste0(parsed_lines[length(parsed_lines)], ";")
   if (length(parsed_lines) > 1) {
     final_lines <- c(parsed_lines[1:(length(parsed_lines) - 1)],
@@ -81,12 +92,12 @@ write_expr <- function(expr, var_names) {
 
 # Recursive function that takes a character vector and parses the vector into
 # a single character string that can be written to .cu kernel file
-parse_expr <- function(expr_char_vec, var_names) {
+parse_expr <- function(expr_char_vec, var_names, depth, index = DATA_ID) {
   
   # Base case 1: a variable in the 
-  index <- which(var_names == expr_char_vec)
-  if (length(index) != 0) {
-    return(translate_variable(index))
+  var_index <- which(var_names == expr_char_vec)
+  if (length(var_index) != 0) {
+    return(translate_variable(var_index, index = index))
   }
   
   # Base case 2: a numeric constant
@@ -102,8 +113,9 @@ parse_expr <- function(expr_char_vec, var_names) {
   if (length(math_index) != 0) {
     args_start <- nchar(RAW_MATH_FUNS[math_index]) + 2
     args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
-    return(paste0(PARSED_MATH_FUNS[math_index], "(", parse_expr(args[1], var_names),
-                  ", ", parse_expr(args[2], var_names), ")"))
+    return(paste0(PARSED_MATH_FUNS[math_index], "(", parse_expr(args[1], var_names,
+                                                                depth, index),
+                  ", ", parse_expr(args[2], var_names, depth, index), ")"))
   }
   
   # Check assignment function
@@ -111,17 +123,66 @@ parse_expr <- function(expr_char_vec, var_names) {
     args_start <- nchar(RAW_ASSIGN_FUN) + 2
     args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
     var_index <- which(var_names == args[1])
-    assignment_statement <- paste(translate_variable(var_index, mod_len = FALSE), PARSED_ASSIGN_FUN, 
-                                  parse_expr(args[2], var_names))
-    return(limit_assignment(var_index, assignment_statement, DEFAULT_DEPTH))
+    
+    ### WRITE LOOP TO STORE FOR ALL (up to) 20 EVALS FOR THIS THREAD
+    eval_expr <- parse_expr(args[2], var_names, depth, 
+                            index = EVAL_ITR)
+    return(write_assign_loop(var_index, eval_expr))
   }
   
   # Check for loop function
   if (startsWith(expr_char_vec, RAW_FOR_FUN)) {
     args_start <- nchar(RAW_FOR_FUN) + 2
     args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
-    browser()
+    return(write_for_loop(args, var_names, depth, index))
   }
+}
+
+write_assign_loop <- function(var_index, eval_expr) {
+  # The var len that determines how many evaluation loops are needed
+  # and the array that stores the results
+  var_len <- paste0("gpu_vars[", as.character(var_index - 1), "].len")
+  store_results <- paste0(STORE_RESULT, "[", EVAL_ITR, "]")
+  update_results <- paste0("gpu_vars[", as.character(var_index - 1), "].data[",
+                            EVAL_ITR, "]")
+  
+  # The actual lines of code for storing results
+  initialize_eval_itr <- paste0(paste(EVAL_ITR, PARSED_ASSIGN_FUN, THREAD_ID), ";")
+  start_loop <- paste0("while (", EVAL_ITR, " < ", 
+                       var_len, ") {")
+  store_command <- paste(store_results, PARSED_ASSIGN_FUN, eval_expr)
+  update_itr <- paste(EVAL_ITR, "+=", THREADS_PER_BLOCK)
+  store_loop <- c(initialize_eval_itr, start_loop,
+                  paste0(indent_lines(c(store_command, update_itr), 1), ";"),
+                  "}")
+  
+  # The actual lines of code for updating the variable with
+  # the stored results
+  update_command <- paste(update_results, PARSED_ASSIGN_FUN, store_results)
+  update_loop <- c(initialize_eval_itr, start_loop,
+                   paste0(indent_lines(c(update_command, update_itr), 1), ";"),
+                   "}")
+  return(c(store_loop, SYNC_GRID, update_loop))
+}
+
+write_for_loop <- function(args, var_names, depth, index) {
+  # browser()
+  iter_index <- paste0("i", as.character(depth))
+  loop_start_line <- paste0("for (int ", iter_index,  
+                            " = 0; ", iter_index, " < gpu_iter_lens[", 
+                            as.character(g_loop_count),
+                            "]; ", iter_index, "++) {")
+  var_index <- which(var_names == args[1])
+  limit_line <- "if (thread_index == 0) {"
+  update_iter_lines <- paste(translate_variable(var_index, mod_len = FALSE,
+                                               index = DEFAULT_INDEX), 
+                            PARSED_ASSIGN_FUN, parse_expr(args[2], var_names,
+                                                          depth, index = iter_index), ";")
+  update_iter_lines <- c(limit_line, indent_lines(update_iter_lines, 1), "}", SYNC_GRID)
+  execute_line <- parse_expr(args[3], var_names, depth + 1, index)
+  body_text <- indent_lines(c(update_iter_lines, execute_line, SYNC_GRID))
+  g_loop_count <- g_loop_count + 1
+  return(c(loop_start_line, indent_lines(body_text, depth = 1), "}"))
 }
 
 identify_arg <- function(expr_char_vec) {
@@ -143,21 +204,13 @@ identify_arg <- function(expr_char_vec) {
   }
 }
 
-translate_variable <- function(var_num, mod_len = TRUE) {
+translate_variable <- function(var_num, mod_len = TRUE, index = DATA_ID) {
   var_struct <- paste0(GPU_MAPPING, "[", as.character(var_num - 1), "]")
   if (mod_len) {
     return(paste0(var_struct, ".", DATA_FIELD, "[", 
-                  THREAD_ID, " % ", var_struct, ".", DATA_LENGTH, "]"))
+                  index, " % ", var_struct, ".", DATA_LENGTH, "]"))
   }
-  return(paste0(var_struct, ".", DATA_FIELD, "[", THREAD_ID, "]"))
-}
-
-limit_assignment <- function(var_index, assignment_statement, depth) {
-  limit_line <- paste0("if (thread_index < gpu_vars[",
-                                   as.character(var_index - 1), "].len) {")
-  assignment_statement <- indent_lines(paste0(assignment_statement, ";"), 1)
-  close_line <- "}"
-  return(c(limit_line, assignment_statement, close_line))
+  return(paste0(var_struct, ".", DATA_FIELD, "[", index, "]"))
 }
 
 identify_args <- function(expr_char_vec) {

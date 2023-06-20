@@ -4,21 +4,8 @@
 /* Memory for Rvar structures stored in __constant__ access memory for faster execution */
 __constant__ Rvar gpu_vars[MAX_VARS];
 
-
-/*
- * Forces synchronization of all threads in all blocks using 
- * CUDA's built in cooperative_groups functionality.
- * Note this requires all blocks be the same size, however,
- * this is always the case in this program.
- */
-
-__device__ void sync_blocks() {
-  /* Do we need to sync in block first? */
-  cooperative_groups::thread_block block = cooperative_groups::this_thread_block();
-  block.sync();
-  auto group = cooperative_groups::coalesced_threads();
-  group.sync();
-}
+/* Memory for size of loop iterations stored in __constant__ access memory for faster execution */
+__constant__ int gpu_iter_lens[MAX_ITERS];
 
 
 /* Define functions available to kernel */
@@ -66,7 +53,12 @@ __device__ double dvs(double arg1, double arg2) {
 __global__
 void kernel(int max_index)
 {
-  int thread_index = blockDim.x * blockIdx.x + threadIdx.x;
+  __shared__ double evals[THREADS_PER_BLOCK * EVALS_PER_THREAD];
+  int data_index = blockDim.x * blockIdx.x + threadIdx.x;
+  int thread_index = threadIdx.x;
+  int _eval_itr = 0;
+  cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+
   // [[Kernel.start]]
   // Machine generated code
   // [[Kernel.end]]
@@ -78,18 +70,40 @@ void kernel(int max_index)
  */
 
 void call_device() {
-  
-  /* Copy the Rvars into __constant__ memory for faster execution in kernel */
-  store_vars();
 
   /* TEMP */
-  int max_len = 50000;
+  g_iter_lens[0] = 2;
+  g_iter_count = 1;
+  int max_len = 100000;
 
-  /* Number of blocks to use in device call */
-  int blocks_per_grid = (max_len + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  /* Copy the Rvars into __constant__ memory for faster execution in kernel */
+  store_vars();
+  
+  /* Copy the iter lens into __constant__ memory for faster execution in kernel */
+  store_iter_lens();
+
+  /* Calculate the number of blocks needed and raise error if this exceeds  */
+  /* the number of SMs, as we use shared memory on each block that requires */
+  /* all available shared memory for a given SM                             */
+  cudaDeviceProp deviceProp;
+  int dev = 0;
+  cudaGetDeviceProperties(&deviceProp, dev);
+  int evals_per_block = THREADS_PER_BLOCK * EVALS_PER_THREAD;
+  int blocks_per_grid = ceil((max_len + THREADS_PER_BLOCK - 1) / evals_per_block);
+
+  if (blocks_per_grid > deviceProp.multiProcessorCount) {
+    printf("Error: Data too large for simultaneous execution on device\n");
+  }
+  else {
+    printf("LAUNCHING %d BLOCKS\n", blocks_per_grid);
+  }
+
+  void* args[] = {&max_len};
+
+  cudaLaunchCooperativeKernel((void*) kernel, blocks_per_grid, THREADS_PER_BLOCK, args);
 
   // Run kernel on the GPU
-  kernel<<<blocks_per_grid, THREADS_PER_BLOCK>>>(max_len);
+  //kernel<<<blocks_per_grid, THREADS_PER_BLOCK>>>(max_len);
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
@@ -109,3 +123,17 @@ void store_vars() {
   cudaDeviceSynchronize();
 }
 
+
+/*
+ * Copies variable info stored in CPU memory to __constant__ GPU memory
+ */
+
+void store_iter_lens() {
+  cudaError_t err = cudaMemcpyToSymbol(gpu_iter_lens, g_iter_lens, sizeof(int) * g_iter_count);
+  if (err != cudaSuccess) {
+    printf("CUDA error while copying iteration lengths to __constant__ memory: %s\n", 
+           cudaGetErrorString(err));
+  }
+  cudaDeviceSynchronize();
+
+}

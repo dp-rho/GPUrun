@@ -1,3 +1,3 @@
 #define THREADS_PER_BLOCK (256)
-
+#define EVALS_PER_THREAD (22)
 
