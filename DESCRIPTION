@@ -1,6 +1,6 @@
 Package: GPUrun
 Type: Package
-Title: Automated GPU Compilation Execution
+Title: Automated GPU Compilation and Execution
 Version: 1.0
 Date: 2023-05-08
 Author: Your Name
