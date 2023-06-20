@@ -14,7 +14,8 @@ DELIM <- " "
 OPEN_EXPR <- "("
 CLOSE_EXPR <- ")"
 SYNC_GRID <- "grid.sync();"
-EVAL_ITR <- "_eval_itr"
+SHARED_MEM_INDEX <- "_shared_mem_index"
+EVAL_DATA_INDEX <- "_eval_data_index"
 
 DEFAULT_DEPTH <- 2
 
@@ -29,6 +30,7 @@ PARSED_FOR_FUN <- "for"
 
 STORE_RESULT <- "evals";
 THREADS_PER_BLOCK <- "THREADS_PER_BLOCK"
+EVALS_PER_THREAD <- "EVALS_PER_THREAD"
 
 g_loop_count <- 0
 
@@ -92,7 +94,7 @@ write_expr <- function(expr, var_names) {
 
 # Recursive function that takes a character vector and parses the vector into
 # a single character string that can be written to .cu kernel file
-parse_expr <- function(expr_char_vec, var_names, depth, index = DATA_ID) {
+parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX) {
   
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_char_vec)
@@ -125,8 +127,7 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = DATA_ID) {
     var_index <- which(var_names == args[1])
     
     ### WRITE LOOP TO STORE FOR ALL (up to) 20 EVALS FOR THIS THREAD
-    eval_expr <- parse_expr(args[2], var_names, depth, 
-                            index = EVAL_ITR)
+    eval_expr <- parse_expr(args[2], var_names, depth)
     return(write_assign_loop(var_index, eval_expr))
   }
   
@@ -142,25 +143,29 @@ write_assign_loop <- function(var_index, eval_expr) {
   # The var len that determines how many evaluation loops are needed
   # and the array that stores the results
   var_len <- paste0("gpu_vars[", as.character(var_index - 1), "].len")
-  store_results <- paste0(STORE_RESULT, "[", EVAL_ITR, "]")
+  store_results <- paste0(STORE_RESULT, "[", SHARED_MEM_INDEX, "]")
   update_results <- paste0("gpu_vars[", as.character(var_index - 1), "].data[",
-                            EVAL_ITR, "]")
-  
+                           EVAL_DATA_INDEX, "]")
+  eval_index <- "_eval_index"
   # The actual lines of code for storing results
-  initialize_eval_itr <- paste0(paste(EVAL_ITR, PARSED_ASSIGN_FUN, THREAD_ID), ";")
-  start_loop <- paste0("while (", EVAL_ITR, " < ", 
-                       var_len, ") {")
+  initialize_SHARED_MEM_INDEX <- paste0(paste(SHARED_MEM_INDEX, PARSED_ASSIGN_FUN, THREAD_ID), ";")
+  start_loop <- paste0("for (int ", eval_index, " = 0;", eval_index, " < ", 
+                       EVALS_PER_THREAD, "; ", eval_index, "++) {")
+  update_data_index <- paste(EVAL_DATA_INDEX, PARSED_ASSIGN_FUN, "grid_size", 
+                             "*", eval_index, "+", DATA_ID)
   store_command <- paste(store_results, PARSED_ASSIGN_FUN, eval_expr)
-  update_itr <- paste(EVAL_ITR, "+=", THREADS_PER_BLOCK)
-  store_loop <- c(initialize_eval_itr, start_loop,
-                  paste0(indent_lines(c(store_command, update_itr), 1), ";"),
+  update_shared_index <- paste(SHARED_MEM_INDEX, "+=", THREADS_PER_BLOCK)
+  store_loop <- c(initialize_SHARED_MEM_INDEX, start_loop,
+                  paste0(indent_lines(c(update_data_index, store_command, 
+                                        update_shared_index), 1), ";"),
                   "}")
   
   # The actual lines of code for updating the variable with
   # the stored results
   update_command <- paste(update_results, PARSED_ASSIGN_FUN, store_results)
-  update_loop <- c(initialize_eval_itr, start_loop,
-                   paste0(indent_lines(c(update_command, update_itr), 1), ";"),
+  update_loop <- c(initialize_SHARED_MEM_INDEX, start_loop,
+                   paste0(indent_lines(c(update_data_index, update_command, 
+                                         update_shared_index), 1), ";"),
                    "}")
   return(c(store_loop, SYNC_GRID, update_loop))
 }

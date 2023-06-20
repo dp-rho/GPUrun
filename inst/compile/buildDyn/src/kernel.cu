@@ -51,12 +51,13 @@ __device__ double dvs(double arg1, double arg2) {
  */
 
 __global__
-void kernel(int max_index)
+void kernel(int max_index, int grid_size)
 {
   __shared__ double evals[THREADS_PER_BLOCK * EVALS_PER_THREAD];
   int data_index = blockDim.x * blockIdx.x + threadIdx.x;
   int thread_index = threadIdx.x;
-  int _eval_itr = 0;
+  int _shared_mem_index = 0;
+  int _eval_data_index = 0;
   cooperative_groups::grid_group grid = cooperative_groups::this_grid();
 
   // [[Kernel.start]]
@@ -72,7 +73,7 @@ void kernel(int max_index)
 void call_device() {
 
   /* TEMP */
-  g_iter_lens[0] = 2;
+  g_iter_lens[0] = 100000;
   g_iter_count = 1;
   int max_len = 100000;
 
@@ -89,21 +90,16 @@ void call_device() {
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
   int evals_per_block = THREADS_PER_BLOCK * EVALS_PER_THREAD;
-  int blocks_per_grid = ceil((max_len + THREADS_PER_BLOCK - 1) / evals_per_block);
+  int blocks_per_grid = std::ceil(((float) max_len + THREADS_PER_BLOCK - 1) / evals_per_block);
 
   if (blocks_per_grid > deviceProp.multiProcessorCount) {
     printf("Error: Data too large for simultaneous execution on device\n");
   }
-  else {
-    printf("LAUNCHING %d BLOCKS\n", blocks_per_grid);
-  }
 
-  void* args[] = {&max_len};
+  int grid_size = blocks_per_grid * THREADS_PER_BLOCK;
+  void* args[] = {&max_len, &grid_size};
 
   cudaLaunchCooperativeKernel((void*) kernel, blocks_per_grid, THREADS_PER_BLOCK, args);
-
-  // Run kernel on the GPU
-  //kernel<<<blocks_per_grid, THREADS_PER_BLOCK>>>(max_len);
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
