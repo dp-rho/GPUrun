@@ -34,7 +34,8 @@ compile_commands <- function(expr_ls) {
   
   # use devtools to build and install the pseudo package package
   # in order to generate a portable binary .so object
-  devtools::install(pkg = pseudo_pkg_dir, 
+  devtools::install(pkg = pseudo_pkg_dir,
+                    quiet = TRUE,
                     args = paste0("--library=", install_loc))
   
   # increment the key values in package meta files
