@@ -4,9 +4,6 @@
 /* The array of globally accessible pointers to gpu ready dynamic memory  */
 void* gpu_mem[MAX_GPU_POINTERS];
 
-/* The constant array of R object structures accessed by the GPU during execution */
-__constant__ Rvar gpu_vars[MAX_VARS];
-
 
 /*
  * Searches for an available pointer that can be dynamically allocated
