@@ -83,9 +83,9 @@ void call_device() {
   /* Copy the iter lens into __constant__ memory for faster execution in kernel */
   store_iter_lens();
 
-  /* Calculate the number of blocks needed and raise error if this exceeds  */
-  /* the number of SMs, as we use shared memory on each block that requires */
-  /* all available shared memory for a given SM                             */
+  /* Calculate the number of evals needed per block and raise error if this exceeds */
+  /* the maximum number of evaluations per block that has been pre calculated based */
+  /* on a CUDA device with 48kb of __shared__ memory per block                      */
   cudaDeviceProp deviceProp;
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
@@ -96,8 +96,8 @@ void call_device() {
     printf("Error: Data too large for simultaneous execution on device\n");
   }
   else {
-    printf("Launching %d blocks with %d evals per thread\n", 
-           deviceProp.multiProcessorCount * BLOCKS_PER_SM, evals_per_thread);
+    printf("Launching %d blocks with %d threads per block and %d evals per thread\n",
+           deviceProp.multiProcessorCount * BLOCKS_PER_SM, THREADS_PER_BLOCK, evals_per_thread);
   }
 
   void* args[] = {&max_len, &grid_size, &evals_per_thread};
