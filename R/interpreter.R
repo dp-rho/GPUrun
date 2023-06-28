@@ -30,7 +30,7 @@ PARSED_FOR_FUN <- "for"
 
 STORE_RESULT <- "evals";
 THREADS_PER_BLOCK <- "THREADS_PER_BLOCK"
-EVALS_PER_THREAD <- "EVALS_PER_THREAD"
+EVALS_PER_THREAD <- "evals_per_thread"
 
 g_loop_count <- 0
 
@@ -149,7 +149,7 @@ write_assign_loop <- function(var_index, eval_expr) {
   eval_index <- "_eval_index"
   # The actual lines of code for storing results
   initialize_SHARED_MEM_INDEX <- paste0(paste(SHARED_MEM_INDEX, PARSED_ASSIGN_FUN, THREAD_ID), ";")
-  start_loop <- paste0("for (int ", eval_index, " = 0;", eval_index, " < ", 
+  start_loop <- paste0("for (int ", eval_index, " = 0; ", eval_index, " < ", 
                        EVALS_PER_THREAD, "; ", eval_index, "++) {")
   update_data_index <- paste(EVAL_DATA_INDEX, PARSED_ASSIGN_FUN, "grid_size", 
                              "*", eval_index, "+", DATA_ID)

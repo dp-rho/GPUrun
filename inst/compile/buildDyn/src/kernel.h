@@ -1,3 +1,4 @@
+#define BLOCKS_PER_SM (1)
 #define THREADS_PER_BLOCK (256)
-#define EVALS_PER_THREAD (22)
+#define MAX_EVALS_PER_THREAD (22)
 
