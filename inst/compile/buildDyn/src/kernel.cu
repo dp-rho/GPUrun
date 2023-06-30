@@ -73,8 +73,6 @@ void kernel(int max_index, int grid_size, int evals_per_thread)
 void call_device() {
 
   /* TEMP */
-  g_iter_lens[0] = 100000;
-  g_iter_count = 1;
   int max_len = 100000;
 
   /* Copy the Rvars into __constant__ memory for faster execution in kernel */
