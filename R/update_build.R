@@ -126,6 +126,6 @@ update_namespace <- function(cur_key, file_loc) {
 update_makevars <- function(cur_key, file_loc) {
   file_contents <- readLines(file_loc)
   file_contents[MAKEVARS_ALL_LINE] <- paste0("all : ", cur_key, ".so")
-  file_contents[MAKEVARS_SO_LINE] <- paste0(cur_key, ".so: \$(OBJECTS)")
+  file_contents[MAKEVARS_SO_LINE] <- paste0(cur_key, ".so: $(OBJECTS)")
   writeLines(file_contents, file_loc)
 }
