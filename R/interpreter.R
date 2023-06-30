@@ -32,8 +32,6 @@ STORE_RESULT <- "evals";
 THREADS_PER_BLOCK <- "THREADS_PER_BLOCK"
 EVALS_PER_THREAD <- "evals_per_thread"
 
-g_loop_count <- 0
-
 # Writes kernel code to the relevant section of kernel.cu
 write_kernel <- function(expr_ls, var_names) {
   # get location of compile directory
@@ -49,6 +47,9 @@ write_kernel <- function(expr_ls, var_names) {
   mapped_matches <- as.vector(lapply(kernel_lines, kernel_match))
   start_index <- which(mapped_matches == START_FLAG)
   stop_index <- which(mapped_matches == END_FLAG)
+
+  # Initialize the count of loops in the current commands
+  g_loop_count <- 0
   
   # Write the parsed expressions to fill in the kernel code
   lines_to_write <- c(kernel_lines[1:start_index],
@@ -59,8 +60,6 @@ write_kernel <- function(expr_ls, var_names) {
   }
   lines_to_write <- c(lines_to_write, indent_lines("}", DEFAULT_DEPTH - 1),
                       kernel_lines[stop_index:length(kernel_lines)])
-  
-  g_loop_count <- 0
   
   # write the updated lines to the kernel file
   base::writeLines(lines_to_write, kernel_path)
@@ -126,7 +125,10 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX)
     args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
     var_index <- which(var_names == args[1])
     
-    ### WRITE LOOP TO STORE FOR ALL (up to) 20 EVALS FOR THIS THREAD
+    # Each thread can evaluate up to 22 indices in the expression, this is limited
+    # by the __shared__ memory available to store the results of the evaluations 
+    # before writing them to global memory associated with the first argument
+    # of this expression
     eval_expr <- parse_expr(args[2], var_names, depth)
     return(write_assign_loop(var_index, eval_expr))
   }
@@ -140,6 +142,7 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX)
 }
 
 write_assign_loop <- function(var_index, eval_expr) {
+  
   # The var len that determines how many evaluation loops are needed
   # and the array that stores the results
   var_len <- paste0("gpu_vars[", as.character(var_index - 1), "].len")
@@ -147,6 +150,7 @@ write_assign_loop <- function(var_index, eval_expr) {
   update_results <- paste0("gpu_vars[", as.character(var_index - 1), "].data[",
                            EVAL_DATA_INDEX, "]")
   eval_index <- "_eval_index"
+  
   # The actual lines of code for storing results
   initialize_SHARED_MEM_INDEX <- paste0(paste(SHARED_MEM_INDEX, PARSED_ASSIGN_FUN, THREAD_ID), ";")
   start_loop <- paste0("for (int ", eval_index, " = 0; ", eval_index, " < ", 
@@ -167,27 +171,73 @@ write_assign_loop <- function(var_index, eval_expr) {
                    paste0(indent_lines(c(update_data_index, update_command, 
                                          update_shared_index), 1), ";"),
                    "}")
+  
   return(c(store_loop, SYNC_GRID, update_loop))
 }
 
+# Function which writes compiled code lines to execute a for loop in 
+# the syntax of R
 write_for_loop <- function(args, var_names, depth, index) {
-  # browser()
+  
+  # The compiled variable name that is used to iterate through the for loop,
+  # starts at i1, then i2, then i3, etc, as depth increases (nested loops)
   iter_index <- paste0("i", as.character(depth))
+
+  # The line of code which actually begins the loop, note that 'gpu_iter_lens[x]' is
+  # the upper bound of the xth loop, gpu_iter_lens is a __constant__ memory storage array
+  # of iteration lengths for all loops identified in these commands.  The lengths
+  # are originally identified by cpu code using machine generated expressions
+  # and stored in g_iter_lens[x], then copied to __constant__ memory for fast 
+  # access on the GPU.
   loop_start_line <- paste0("for (int ", iter_index,  
                             " = 0; ", iter_index, " < gpu_iter_lens[", 
                             as.character(g_loop_count),
                             "]; ", iter_index, "++) {")
+
+  # Call the function which writes the necessary machine generated expression that
+  # can then be called each time the commands are executed to identify the correct
+  # iteration loop length
+  write_iter_loop_expr(g_loop_count, args[2], var_names)
+  
+  # The R variable that will be updated at each iteration to the evaluation of 
+  # the second argument in the for expression at the index matching the current iteration
   var_index <- which(var_names == args[1])
-  limit_line <- "if (thread_index == 0) {"
+
+  # Only the first thread of the entire grid needs to update the iteration variable,
+  # as the iteration variable in an R for loop has a single element by defintion
+  limit_line <- "if (data_index == 0) {"
+
+  # The identified iteration variable is updated at DEFAULT_DATA_INDEX 
+  # which is 0 in compiled code and 1 in R code.  
   update_iter_lines <- paste(translate_variable(var_index, mod_len = FALSE,
                                                index = DEFAULT_INDEX), 
-                            PARSED_ASSIGN_FUN, parse_expr(args[2], var_names,
-                                                          depth, index = iter_index), ";")
+                             PARSED_ASSIGN_FUN, parse_expr(args[2], var_names,
+                                                           depth, index = iter_index), ";")
+
+  # We must sync the entire grid after updating the iteration variable, as other threads
+  # which do not need to update the iteration variable could use the old value on this 
+  # iteration without the synchronization
   update_iter_lines <- c(limit_line, indent_lines(update_iter_lines, 1), "}", SYNC_GRID)
+  
+  # Recursive call to parse the expression (can actually be multiple expressions using '{' function) 
+  # executed by this for loop
   execute_line <- parse_expr(args[3], var_names, depth + 1, index)
+
+  # The full lines of text for the parsed loop, includes the update to the iteration variable,
+  # the execution of the body expression(s), and a syncrhonization command to ensure that
+  # the full body has been completed by all threads before the next iteration is started
   body_text <- indent_lines(c(update_iter_lines, execute_line, SYNC_GRID))
   g_loop_count <- g_loop_count + 1
   return(c(loop_start_line, indent_lines(body_text, depth = 1), "}"))
+}
+
+# Function which writes machine generated expressions to initialize the compiled values
+# for the iteration loop lengths, the raw numeric value may change on separate executions,
+# so it is necessary to evaluate the written expression at each call to update the 
+# length of iterations for each loop included in the commands
+write_iter_loop_expr <- function(g_loop_count, args[2], var_names) {
+  
+  # NOT IMPLEMENTED
 }
 
 identify_arg <- function(expr_char_vec) {
