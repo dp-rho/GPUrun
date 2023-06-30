@@ -81,6 +81,7 @@ void call_device() {
   store_vars();
   
   /* Copy the iter lens into __constant__ memory for faster execution in kernel */
+  initialize_iter_lens();
   store_iter_lens();
 
   /* Calculate the number of evals needed per block and raise error if this exceeds */
