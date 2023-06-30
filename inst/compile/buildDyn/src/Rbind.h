@@ -4,7 +4,7 @@
 #define COL_DIM (1)
 #define DEFAULT_DATA_INDEX (0)
 #define MAX_VARS (100)
-#define MAX_ITERS (20)
+#define MAX_ITERS (10)
 
 /* Structure type which holds all presevered information about a corresponding R object */
 typedef struct Rvar_info{
