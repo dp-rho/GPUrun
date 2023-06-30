@@ -110,6 +110,32 @@ void call_device() {
   
 }
 
+/*
+ * Initializes the lengths of iteration loops using machine generated expressions,
+ * this is called once at the start of each execution
+ */
+
+void initialize_iter_lens() {
+
+  /* The code below is updated by R code with expressions that are evaluated  */
+  /* at each execution of the compiled commands to get the iteration length   */
+  /* of each included loop                                                    */
+  // [[Iter.lens::start]]
+  g_iter_lens[0] = 0;
+  g_iter_lens[1] = 0;
+  g_iter_lens[2] = 0;
+  g_iter_lens[3] = 0;
+  g_iter_lens[4] = 0;
+  g_iter_lens[5] = 0;
+  g_iter_lens[6] = 0;
+  g_iter_lens[7] = 0;
+  g_iter_lens[8] = 0;
+  g_iter_lens[9] = 0;
+
+  g_iter_count = /* R::g_loop_count */;
+  // [[Iter.lens::end]]
+}
+
 
 /*
  * Copies variable info stored in CPU memory to __constant__ GPU memory
