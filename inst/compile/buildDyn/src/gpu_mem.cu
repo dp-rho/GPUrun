@@ -17,8 +17,8 @@ void* malloc_device(size_t size) {
   static int index = 0;
   int i = 0;
   for (; i < MAX_GPU_POINTERS; i++) {
-    if (!gpu_mem[index++]) break;
     index = index % MAX_GPU_POINTERS;
+    if (!gpu_mem[index++]) break;
   }
 
   /* Case where there were no available pointers  */
