@@ -286,8 +286,9 @@ vectorize_string <- function(input_string) {
 }
 
 # Recursive function that converts an input expression
-# into a vector of single chars which can be passed to
-# the C program and parsed there
+# into a vector of single chars which can be parsed
+# in the R code to write machine generated code
+# to replicate the native R execution on the GPU
 racket_char_vec <- function(input_expr) {
   if (is.numeric(input_expr)) {
     return(vectorize_string(deparse(input_expr)))
