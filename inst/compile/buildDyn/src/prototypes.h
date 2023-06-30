@@ -22,6 +22,9 @@ extern void memcpy_to_host(void*, void*, size_t);
 
 /* Functions in kernel.cu that prepare __constant__ memory for execution on GPU */
 
+/* Function which initializes iteration lengths for loops using machine generated code  */
+extern void initialize_iter_lens();
+
 /* Function which stores Rvar structures in __constant__ memory */
 extern void store_vars();
 
