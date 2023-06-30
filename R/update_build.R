@@ -2,6 +2,8 @@
 PACKAGE_LINE <- 1
 TITLE_LINE <- 3
 DYN_LIB_LINE <- 1
+MAKEVARS_ALL_LINE <- 50
+MAKEVARS_SO_LINE <- 52
 
 # RcppExports.cpp updates
 RCPP_FILE_NAME <- "RcppExports.cpp"
@@ -32,8 +34,10 @@ update_build <- function(cur_key, pkg_dir) {
   namespace_file <- file.path(pkg_dir, "NAMESPACE")
   exports_file <- file.path(pkg_dir, "src", RCPP_FILE_NAME)
   R_file <- file.path(pkg_dir, "R", R_FILE_NAME)
+  makevars_file <- file.path(pkg_dir, "src", "Makevars")
   update_description(new_key, description_file)
   update_namespace(new_key, namespace_file)
+  update_makevars(new_key, makevars_file)
   update_exports(new_key, exports_file)
   update_R(new_key, R_file)
 }
@@ -115,5 +119,13 @@ update_description <- function(cur_key, file_loc) {
 update_namespace <- function(cur_key, file_loc) {
   file_contents <- readLines(file_loc)
   file_contents[DYN_LIB_LINE] <- paste0("useDynLib(", cur_key, ", .registration=TRUE)")
+  writeLines(file_contents, file_loc)
+}
+
+# Update the Makevars file of pseduo package
+update_makevars <- function(cur_key, file_loc) {
+  file_contents <- readLines(file_loc)
+  file_contents[MAKEVARS_ALL_LINE] <- paste0("all : ", cur_key, ".so")
+  file_contents[MAKEVARS_SO_LINE] <- paste0(cur_key, ".so: \$(OBJECTS)")
   writeLines(file_contents, file_loc)
 }
