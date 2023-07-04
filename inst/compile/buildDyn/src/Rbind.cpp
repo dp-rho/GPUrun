@@ -10,6 +10,12 @@ int g_var_count = 0;
 int g_iter_lens[MAX_ITERS];
 int g_iter_count = 0;
 
+/* Initialize global array of sizes for each expression evaluation data vector */
+int g_evals_per_thread[MAX_EXPRS];
+int g_expr_count = 0;
+
+
+
 
 /* 
  * Binds the abstracted information of an R object into a dynamically 

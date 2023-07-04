@@ -10,7 +10,7 @@ RLIBS <- "libs"
 # in the current R session by using the object returned from this
 # function call
 compile_commands <- function(expr_ls) {
-  
+
   # get the list of variable names in an ordered list
   # to allow machine generated code to access them by index
   var_names <- unique(unlist(lapply(expr_ls, all.vars)))

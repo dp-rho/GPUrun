@@ -5,6 +5,7 @@
 #define DEFAULT_DATA_INDEX (0)
 #define MAX_VARS (100)
 #define MAX_ITERS (10)
+#define MAX_EXPRS (50)
 
 /* Structure type which holds all presevered information about a corresponding R object */
 typedef struct Rvar_info{
@@ -24,4 +25,6 @@ extern int g_var_count;
 extern int g_iter_lens[MAX_ITERS];
 extern int g_iter_count;
 
-
+/* Global array of evals per thread for each expression (or sub expression of { }) */
+extern int g_evals_per_thread[MAX_EXPRS];
+extern int g_expr_count;

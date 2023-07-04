@@ -7,6 +7,9 @@ __constant__ Rvar gpu_vars[MAX_VARS];
 /* Memory for size of loop iterations stored in __constant__ access memory for faster execution */
 __constant__ int gpu_iter_lens[MAX_ITERS];
 
+/* Memory for size of expressions stored in __constant__ access memory for faster execution */
+__constant__ int gpu_evals_per_thread[MAX_EXPRS];
+
 
 /* Define functions available to kernel */
 
@@ -51,7 +54,7 @@ __device__ double dvs(double arg1, double arg2) {
  */
 
 __global__
-void kernel(int max_index, int grid_size, int evals_per_thread)
+void kernel(int grid_size)
 {
   __shared__ double evals[THREADS_PER_BLOCK * MAX_EVALS_PER_THREAD];
   int data_index = blockDim.x * blockIdx.x + threadIdx.x;
@@ -71,20 +74,23 @@ void kernel(int max_index, int grid_size, int evals_per_thread)
  */
 
 void call_device() {
-
-  /* TEMP */
-  int max_len = 100000;
-
   /* Copy the Rvars into __constant__ memory for faster execution in kernel */
   store_vars();
   
-  /* Copy the iter lens into __constant__ memory for faster execution in kernel */
+  /* Intialize and copy the iter lens into __constant__ memory for faster execution in kernel */
   initialize_iter_lens();
   store_iter_lens();
 
+  /* Intialize and copy the expr lens into __constant__ memory for faster execution in kernel */
+  initialize_expr_lens();
+  store_expr_lens();
+  int max_len = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
+
   /* Calculate the number of evals needed per block and raise error if this exceeds */
   /* the maximum number of evaluations per block that has been pre calculated based */
-  /* on a CUDA device with 48kb of __shared__ memory per block                      */
+  /* on a CUDA device with 48kb of __shared__ memory per SM.  Note that the evals   */
+  /* per thread in each expression will vary as the goal is to maximize concurrency */
+  /* and thus larger expressions will require more evaluations per thread.          */
   cudaDeviceProp deviceProp;
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
@@ -95,19 +101,21 @@ void call_device() {
     printf("Error: Data too large for simultaneous execution on device\n");
   }
   else {
-    printf("Launching %d blocks with %d threads per block and %d evals per thread\n",
-           deviceProp.multiProcessorCount * BLOCKS_PER_SM, THREADS_PER_BLOCK, evals_per_thread);
+    // CHECK HOW EFFICIENT 2 BLOCKS_PER_SM IS WITH SIMILAR SHARED MEMSIZE PER BLOCK
+    printf("Launching %d blocks with %d threads per block\n",
+           deviceProp.multiProcessorCount * BLOCKS_PER_SM, THREADS_PER_BLOCK);
   }
 
-  void* args[] = {&max_len, &grid_size, &evals_per_thread};
+  void* args[] = {&grid_size};
 
-  cudaLaunchCooperativeKernel((void*) kernel, deviceProp.multiProcessorCount * BLOCKS_PER_SM, THREADS_PER_BLOCK, 
-                              args);
+  cudaLaunchCooperativeKernel((void*) kernel, deviceProp.multiProcessorCount * BLOCKS_PER_SM, 
+                              THREADS_PER_BLOCK, args);
 
   // Wait for GPU to finish before accessing on host
   cudaDeviceSynchronize();
   
 }
+
 
 /*
  * Initializes the lengths of iteration loops using machine generated expressions,
@@ -119,21 +127,39 @@ void initialize_iter_lens() {
   /* The code below is updated by R code with expressions that are evaluated  */
   /* at each execution of the compiled commands to get the iteration length   */
   /* of each included loop                                                    */
-  // [[Iter.lens::start]]
-  g_iter_lens[0] = 0;
-  g_iter_lens[1] = 0;
-  g_iter_lens[2] = 0;
-  g_iter_lens[3] = 0;
-  g_iter_lens[4] = 0;
-  g_iter_lens[5] = 0;
-  g_iter_lens[6] = 0;
-  g_iter_lens[7] = 0;
-  g_iter_lens[8] = 0;
-  g_iter_lens[9] = 0;
 
+  // [[Iter.lens::start]]
+  g_iter_lens[/*x*/] = /* parsed expr len */
   g_iter_count = /* R::g_loop_count */;
   // [[Iter.lens::end]]
 }
+
+
+/*
+ * Initializes the lengths of iteration loops using machine generated expressions,
+ * this is called once at the start of each execution
+ */
+
+void initialize_expr_lens() {
+
+  /* Retrieve the grid size to allow calculation of expr specific evals per thread  */
+  cudaDeviceProp deviceProp;
+  int dev = 0;
+  cudaGetDeviceProperties(&deviceProp, dev);
+  int grid_size = THREADS_PER_BLOCK * deviceProp.multiProcessorCount * BLOCKS_PER_SM;
+  int evals_per_thread = 0;
+
+  /* The code below is updated by R code with expressions that are evaluated  */
+  /* at each execution of the compiled commands to get the expression length  */
+  /* of each included expression                                              */
+
+  // [[Expr.lens::start]]
+  evals_per_thread = /* parsed expr len */;
+  g_evals_per_thread[/*x*/] = std::ceil((float) evals_per_thread / grid_size);
+  g_expr_count = /* R::g_expr_count */;
+  // [[Expr.lens::end]]
+}
+
 
 
 /*
@@ -150,7 +176,7 @@ void store_vars() {
 
 
 /*
- * Copies variable info stored in CPU memory to __constant__ GPU memory
+ * Copies iteration loop info stored in CPU memory to __constant__ GPU memory
  */
 
 void store_iter_lens() {
@@ -162,3 +188,20 @@ void store_iter_lens() {
   cudaDeviceSynchronize();
 
 }
+
+
+/*
+ * Copies expression length info stored in CPU memory to __constant__ GPU memory
+ */
+
+void store_expr_lens() {
+  cudaError_t err = cudaMemcpyToSymbol(gpu_evals_per_thread, g_evals_per_thread, 
+                                       sizeof(int) * g_expr_count);
+  if (err != cudaSuccess) {
+    printf("CUDA error while copying expression lengths to __constant__ memory: %s\n",
+           cudaGetErrorString(err));
+  }
+  cudaDeviceSynchronize();
+
+}
+
