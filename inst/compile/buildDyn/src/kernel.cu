@@ -50,6 +50,17 @@ __device__ double dvs(double arg1, double arg2) {
 
 
 /*
+ * Range operator, i.e., from 1:10, return 1, 2, 3, ...
+ */
+
+__device__ double range(double arg1, double arg2, int data_index) {
+  int sign = (arg2 > arg1) ? 1 : -1;
+  int len = std::floor(abs(arg2 - arg1) + 1);
+  return arg1 + (sign * (data_index % len));
+}
+
+
+/*
  * Kernel function ran on the GPU
  */
 
@@ -147,15 +158,15 @@ void initialize_expr_lens() {
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
   int grid_size = THREADS_PER_BLOCK * deviceProp.multiProcessorCount * BLOCKS_PER_SM;
-  int evals_per_thread = 0;
+  int expr_len = 0;
 
   /* The code below is updated by R code with expressions that are evaluated  */
   /* at each execution of the compiled commands to get the expression length  */
   /* of each included expression                                              */
 
   // [[Expr.lens::start]]
-  evals_per_thread = /* parsed expr len */;
-  g_evals_per_thread[/*x*/] = std::ceil((float) evals_per_thread / grid_size);
+  expr_len = /* parsed expr len */;
+  g_evals_per_thread[/*x*/] = std::ceil((float) expr_len / grid_size);
   g_expr_count = /* R::g_expr_count */;
   // [[Expr.lens::end]]
 }

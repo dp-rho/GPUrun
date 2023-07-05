@@ -27,7 +27,11 @@ EVAL_DATA_INDEX <- "_eval_data_index"
 DEFAULT_DEPTH <- 1
 
 RAW_MATH_FUNS <- paste0(OPEN_EXPR, c("+", "-", "*", "/"))
+NEGATIVE_INDEX <- 2
 PARSED_MATH_FUNS <- c("add", "sub", "mul", "dvs")
+
+RAW_RANGE_FUN <- paste0(OPEN_EXPR, ":")
+PARSED_RANGE_FUN <- "range"
 
 RAW_ASSIGN_FUN <- paste0(OPEN_EXPR, "<-")
 PARSED_ASSIGN_FUN <- "="
@@ -125,10 +129,12 @@ write_iter_loop_lens <- function(lines_to_edit, var_names, g_loop_exprs, g_loop_
   stop_index <- which(mapped_matches == END_FLAG)
   
   updated_lines <- c()
-  for (i in 1:g_loop_count) {
-    updated_lines <- c(updated_lines, 
-                       paste0("g_iter_lens[", as.character(i - 1), "] = ",
-                              g_loop_exprs[i]))
+  if (g_loop_count > 0) {
+    for (i in 1:g_loop_count) {
+      updated_lines <- c(updated_lines, 
+                         paste0("g_iter_lens[", as.character(i - 1), "] = ",
+                                g_loop_exprs[i]))
+    }
   }
   updated_lines <- c(updated_lines, paste0("g_iter_count = ", as.character(g_loop_count)))
   
@@ -148,11 +154,13 @@ write_expr_eval_lens <- function(lines_to_edit, var_names, g_expr_lens, g_expr_c
   stop_index <- which(mapped_matches == END_FLAG)
   
   updated_lines <- c()
-  for (i in 1:g_expr_count) {
-    updated_lines <- c(updated_lines,
-                       paste0("evals_per_thread = ", g_expr_lens[i]),
-                       paste0("g_evals_per_thread[", as.character(i - 1), "] = ",
-                              "std::ceil((float) evals_per_thread / grid_size)"))
+  if (g_expr_count > 0) {
+    for (i in 1:g_expr_count) {
+      updated_lines <- c(updated_lines,
+                         paste0("expr_len = ", g_expr_lens[i]),
+                         paste0("g_evals_per_thread[", as.character(i - 1), "] = ",
+                                "std::ceil((float) expr_len / grid_size)"))
+    }
   }
   updated_lines <- c(updated_lines, paste0("g_expr_count = ", as.character(g_expr_count)))
   
@@ -210,18 +218,22 @@ indent_lines <- function(lines, depth) {
 write_expr <- function(expr, var_names) {
   expr_char_vec <- paste0(racket_char_vec(expr), collapse = "")
   parsed_lines <- parse_expr(expr_char_vec, var_names, 0)
+  
+  # Only add the ";" to the final line, as some expressions
+  # will already be multiline and not require a new ";"
   final_lines <- paste0(parsed_lines[length(parsed_lines)], ";")
   if (length(parsed_lines) > 1) {
     final_lines <- c(parsed_lines[1:(length(parsed_lines) - 1)],
                      final_lines)
   }
+  
   return(final_lines)
 }
 
 # Recursive function that takes a character vector and parses the vector into
 # a single character string that can be written to .cu kernel file
 parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX) {
-  
+  # browser()
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_char_vec)
   if (length(var_index) != 0) {
@@ -241,9 +253,24 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX)
   if (length(math_index) != 0) {
     args_start <- nchar(RAW_MATH_FUNS[math_index]) + 2
     args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
+    
+    # Check special case of negative number
+    if (length(args) == 1 & math_index == NEGATIVE_INDEX) {
+      return(paste0("-(", parse_expr(args[1], var_names, depth, index), ")"))
+    }
+    
     return(paste0(PARSED_MATH_FUNS[math_index], "(", parse_expr(args[1], var_names,
                                                                 depth, index),
                   ", ", parse_expr(args[2], var_names, depth, index), ")"))
+  }
+  
+  # Check range function (i.e. ':')
+  if (startsWith(expr_char_vec, RAW_RANGE_FUN)) {
+    args_start <- nchar(RAW_RANGE_FUN) + 2
+    args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
+    start <- parse_expr(args[1], var_names, depth, index = DEFAULT_INDEX)
+    stop <- parse_expr(args[2], var_names, depth, index = DEFAULT_INDEX)
+    return(paste0(PARSED_RANGE_FUN, "(", start, ", ", stop, ", ", index, ")"))
   }
   
   # Check assignment function
@@ -337,6 +364,7 @@ write_for_loop <- function(args, var_names, depth, index) {
   # Call the function which writes the necessary machine generated expression that
   # can then be called each time the commands are executed to identify the correct
   # iteration loop length
+  # browser()
   save_iter_loop_expr(args[2])
   
   # The R variable that will be updated at each iteration to the evaluation of 
@@ -375,6 +403,7 @@ write_for_loop <- function(args, var_names, depth, index) {
 # so it is necessary to evaluate the written expression at each call to update the 
 # length of iterations for each loop included in the commands
 save_iter_loop_expr <- function(arg) {
+  # browser()
   g_loop_env$cur_expr <- arg
   update_expr <- substitute(g_loop_exprs[g_loop_count + 1] <- parse_expr_len(cur_expr, var_names))
   eval(update_expr, envir = g_loop_env)
@@ -396,7 +425,7 @@ save_expr_len <- function(arg) {
 # rules for operating on vectors/matrices of different sizes, the output of 
 # this function is machine generated compiled code text
 parse_expr_len <- function(expr_chars, var_names) {
-
+  # browser()
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_chars)
   if (length(var_index) != 0) {
@@ -421,9 +450,28 @@ parse_expr_len <- function(expr_chars, var_names) {
   if (length(math_index) != 0) {
     args_start <- nchar(RAW_MATH_FUNS[math_index]) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    
+    # Check special case of negative number
+    if (length(args) == 1 & math_index == NEGATIVE_INDEX) {
+      return(parse_expr_len(args[1], var_names))
+    }
+    
+    # Default case of op(a, b), with op some elementwise math function
     return(paste0("std::max(", parse_expr_len(args[1], var_names), ", ",
                   parse_expr_len(args[2], var_names), ")"))
   }
+  
+  # Range operator, i.e., ":"
+  if (startsWith(expr_chars, RAW_RANGE_FUN)) {
+    args_start <- nchar(RAW_RANGE_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    # Depth should not be relevant for determining the length of a : expression,
+    # as depth is only used in for loop parsing
+    start <- parse_expr(args[1], var_names, depth = 0, index = DEFAULT_INDEX)
+    stop <- parse_expr(args[2], var_names, depth = 0, index = DEFAULT_INDEX)
+    return(paste0("std::floor(abs(", stop, " - ", start,  ")  + 1)"))
+  }
+  
 }
 
 identify_arg <- function(expr_char_vec) {
