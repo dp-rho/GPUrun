@@ -61,6 +61,32 @@ __device__ double range(double arg1, double arg2, int data_index) {
 
 
 /*
+ * Matrix multiplication, implementation is naive with no use of shared memory
+ */
+
+__device__ double mat_mul(Rvar arg1, Rvar arg2, int data_index) {
+
+  /* Check if evaluation index is out of bounds of return matrix  */
+  if (data_index > arg1.rdim * arg2.cdim) return 0;
+
+  /* Identify the row and column index of the element being calculated  */
+  int row_index = data_index % arg1.rdim;
+  int col_index = data_index / arg1.rdim;
+
+  /* The evaluated result of the input index  */
+  double result = 0;
+
+  /* Loop through the selected row and column of arg1 and arg2 and calculated dot product */
+  for (int i = 0; i < arg1.cdim; i++) {
+    result += (arg1.data[(i * arg1.rdim) + row_index] * 
+               arg2.data[(col_index * arg2.rdim) + i]);
+  }
+
+  return result;
+}
+
+
+/*
  * Kernel function ran on the GPU
  */
 
@@ -68,7 +94,7 @@ __global__
 void kernel(int grid_size)
 {
   __shared__ double evals[THREADS_PER_BLOCK * MAX_EVALS_PER_THREAD];
-  int data_index = blockDim.x * blockIdx.x + threadIdx.x;
+  int grid_index = blockDim.x * blockIdx.x + threadIdx.x;
   int thread_index = threadIdx.x;
   int _shared_mem_index = 0;
   int _eval_data_index = 0;
@@ -85,6 +111,7 @@ void kernel(int grid_size)
  */
 
 void call_device() {
+
   /* Copy the Rvars into __constant__ memory for faster execution in kernel */
   store_vars();
   
@@ -99,9 +126,9 @@ void call_device() {
 
   /* Calculate the number of evals needed per block and raise error if this exceeds */
   /* the maximum number of evaluations per block that has been pre calculated based */
-  /* on a CUDA device with 48kb of __shared__ memory per SM.  Note that the evals   */
-  /* per thread in each expression will vary as the goal is to maximize concurrency */
-  /* and thus larger expressions will require more evaluations per thread.          */
+  /* on a CUDA device with at least 48kb of __shared__ memory per SM. Note that the */
+  /* evals per thread in each expression will vary as the goal is to maximize       */
+  /* concurrency, thus larger expressions will require more evaluations per thread. */
   cudaDeviceProp deviceProp;
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);

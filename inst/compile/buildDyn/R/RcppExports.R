@@ -17,7 +17,7 @@ CCxAAAA_bind_vars <- function(vars, eval_env) {
 CCxAAAA_update_vars <- function(vars, eval_env) {
   for (i in seq_along(vars)) {
     data_vec <- invisible(.Call(`_CCxAAAA_get_data`, i))
-    extracted_dim <- dim(eval(vars[i], envir = eval_env))
+    extracted_dim <- dim(eval(parse(text = vars[i]), envir = eval_env))
     if (!is.null(extracted_dim)) {
       assign(vars[i], matrix(data_vec,
                              nrow=extracted_dim[1],

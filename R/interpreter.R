@@ -13,7 +13,7 @@ OTHER_FLAG <- 0
 GPU_MAPPING <- "gpu_vars"
 CPU_MAPPING <- "g_vars"
 DATA_FIELD <- "data"
-DATA_ID <- "data_index"
+GRID_ID <- "grid_index"
 THREAD_ID <- "thread_index"
 DEFAULT_INDEX <- "DEFAULT_DATA_INDEX"
 DATA_LENGTH <- "len"
@@ -23,6 +23,8 @@ CLOSE_EXPR <- ")"
 SYNC_GRID <- "grid.sync();"
 SHARED_MEM_INDEX <- "_shared_mem_index"
 EVAL_DATA_INDEX <- "_eval_data_index"
+DATA_EVAL <- "_eval_for_data"
+REF_EVAL <- "_eval_for_reference"
 
 DEFAULT_DEPTH <- 1
 
@@ -32,6 +34,9 @@ PARSED_MATH_FUNS <- c("add", "sub", "mul", "dvs")
 
 RAW_RANGE_FUN <- paste0(OPEN_EXPR, ":")
 PARSED_RANGE_FUN <- "range"
+
+RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
+PARSED_MAT_MUL_FUN <- "mat_mul"
 
 RAW_ASSIGN_FUN <- paste0(OPEN_EXPR, "<-")
 PARSED_ASSIGN_FUN <- "="
@@ -232,12 +237,18 @@ write_expr <- function(expr, var_names) {
 
 # Recursive function that takes a character vector and parses the vector into
 # a single character string that can be written to .cu kernel file
-parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX) {
+parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
+                       type = DATA_EVAL) {
   # browser()
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_char_vec)
   if (length(var_index) != 0) {
-    return(translate_variable(var_index, index = index))
+    if (type == DATA_EVAL){
+      return(translate_variable(var_index, index = index))
+    }
+    else {
+      return(get_ref(var_index))
+    }
   }
   
   # Base case 2: a numeric constant
@@ -273,6 +284,21 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX)
     return(paste0(PARSED_RANGE_FUN, "(", start, ", ", stop, ", ", index, ")"))
   }
   
+  # Check matrix multiplication function
+  if (startsWith(expr_char_vec, RAW_MAT_MUL_FUN)) {
+    args_start <- nchar(RAW_MAT_MUL_FUN) + 2
+    args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
+    
+    # Check if either arg1 or arg2 are not simple variable expressions, if so allocate
+    # intermediate Rvar used only for storing the sub expression evaluation data
+    
+    # Base case 
+    arg1 <- parse_expr(args[1], var_names, depth, type = REF_EVAL)
+    arg2 <- parse_expr(args[2], var_names, depth, type = REF_EVAL)
+    return(paste0(PARSED_MAT_MUL_FUN, "(", arg1, ", ", arg2, ", ",
+                  EVAL_DATA_INDEX, ")"))
+  }
+    
   # Check assignment function
   if (startsWith(expr_char_vec, RAW_ASSIGN_FUN)) {
     save_expr_len(expr_char_vec)
@@ -320,7 +346,7 @@ write_assign_loop <- function(var_index, eval_expr) {
                        EVALS_PER_THREAD, "[", as.character(g_expr_env$g_expr_count - 1), "]; ", 
                        eval_index, "++) {")
   update_data_index <- paste(EVAL_DATA_INDEX, PARSED_ASSIGN_FUN, "grid_size", 
-                             "*", eval_index, "+", DATA_ID)
+                             "*", eval_index, "+", GRID_ID)
   store_command <- paste(store_results, PARSED_ASSIGN_FUN, eval_expr)
   update_shared_index <- paste(SHARED_MEM_INDEX, "+=", THREADS_PER_BLOCK)
   store_loop <- c(initialize_SHARED_MEM_INDEX, start_loop,
@@ -373,7 +399,7 @@ write_for_loop <- function(args, var_names, depth, index) {
 
   # Only the first thread of the entire grid needs to update the iteration variable,
   # as the iteration variable in an R for loop has a single element by defintion
-  limit_line <- "if (data_index == 0) {"
+  limit_line <- paste0("if (", GRID_ID,"== 0) {")
 
   # The identified iteration variable is updated at DEFAULT_DATA_INDEX 
   # which is 0 in compiled code and 1 in R code.  
@@ -425,7 +451,7 @@ save_expr_len <- function(arg) {
 # rules for operating on vectors/matrices of different sizes, the output of 
 # this function is machine generated compiled code text
 parse_expr_len <- function(expr_chars, var_names) {
-  # browser()
+
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_chars)
   if (length(var_index) != 0) {
@@ -472,6 +498,15 @@ parse_expr_len <- function(expr_chars, var_names) {
     return(paste0("std::floor(abs(", stop, " - ", start,  ")  + 1)"))
   }
   
+  # Check matrix multiplication function
+  if (startsWith(expr_char_vec, RAW_MAT_MUL_FUN)) {
+    args_start <- nchar(RAW_MAT_MUL_FUN) + 2
+    args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
+    arg1 <- parse_expr(args[1], var_names, depth, type = REF_EVAL)
+    agr2 <- parse_expr(args[2], var_names, depth, type = REF_EVAL)
+    return(paste0(arg1, ".rdim * ", arg2, ".cdim"))
+  }
+  
 }
 
 identify_arg <- function(expr_char_vec) {
@@ -493,11 +528,15 @@ identify_arg <- function(expr_char_vec) {
   }
 }
 
-translate_variable <- function(var_num, mod_len = TRUE, index = DATA_ID) {
+get_ref <- function(var_num) {
+  paste0(GPU_MAPPING, "[", as.character(var_num - 1), "]")
+}
+
+translate_variable <- function(var_num, mod_len = TRUE, index = GRID_ID) {
   if (index == DEFAULT_INDEX) { 
     mod_len <- FALSE
   }
-  var_struct <- paste0(GPU_MAPPING, "[", as.character(var_num - 1), "]")
+  var_struct <- get_ref(var_num)
   if (mod_len) {
     return(paste0(var_struct, ".", DATA_FIELD, "[", 
                   index, " % ", var_struct, ".", DATA_LENGTH, "]"))

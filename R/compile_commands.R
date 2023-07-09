@@ -41,6 +41,8 @@ compile_commands <- function(expr_ls) {
   # increment the key values in package meta files
   update_build(current_pkg_key, pseudo_pkg_dir)
   
+  # Return the object that contains all necessary information to call
+  # the compiled code
   return(
     list(
       exprs = expr_ls,
@@ -56,18 +58,18 @@ run_commands <- function(compiled_commands, eval_env) {
   
   # get compiled temp lib loaded to the namespace
   compile_path <- system.file("compile", package = "GPUrun")
-  temp_path <- file.path(compile_path, INSTALL_LOC)
-  library(compiled_commands$key, lib.loc = temp_path,
+  temp_installed_path <- file.path(compile_path, INSTALL_LOC)
+  library(compiled_commands$key, lib.loc = temp_installed_path,
           character.only = T)
   
-  # bind the variables in the compiled_command object to compiled memory
+  # bind the variables in the compiled_command R object to compiled memory
   eval(parse(text = paste0(compiled_commands$key, 
                            "_bind_vars(compiled_commands$vars, eval_env)")))
   
-  # eval the commands with parallel compiled code
+  # evaluate the commands with parallel compiled code
   eval(parse(text = paste0(compiled_commands$key, "_execute_commands()")))
   
-  # update the R variables in the evaled environment with the 
+  # update the R variables in the evaluated environment with the 
   # values retrieved from the compiled run of the commands
   # and free the variables in compiled memory
   eval(parse(text = paste0(compiled_commands$key, 
