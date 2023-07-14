@@ -6,6 +6,11 @@
 Rvar g_vars[MAX_VARS];
 int g_var_count = 0;
 
+/* Initialize global array of structures for R objects of intermediate evaluation */
+/* and the number of those intermediate evaluations                               */
+Rvar g_int_evals[MAX_INT_VARS];
+int g_int_eval_count = 0;
+
 /* Initialize global array of sizes for each looping iteration data vector */
 int g_iter_lens[MAX_ITERS];
 int g_iter_count = 0;

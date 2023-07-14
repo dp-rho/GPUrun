@@ -34,6 +34,9 @@ extern void initialize_iter_lens();
 /* Function which initializes expression lengths using machine generated code  */
 extern void initialize_expr_lens();
 
+/* Function which initializes intermediate evaluation Rvars using machine generated code  */
+extern void initialize_int_evals();
+
 /* Function which stores Rvar structures in __constant__ memory */
 extern void store_vars();
 
@@ -42,6 +45,9 @@ extern void store_iter_lens();
 
 /* Function which stores length info for expressions in __constant__ memory */
 extern void store_expr_lens();
+
+/* Function which stores intermediate evaluation Rvars in __constant__ memory */
+extern void store_int_evals();
 
 /* Function which calls the machine generated kernel code */
 extern void call_device();

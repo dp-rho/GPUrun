@@ -4,6 +4,9 @@
 /* Memory for Rvar structures stored in __constant__ access memory for faster execution */
 __constant__ Rvar gpu_vars[MAX_VARS];
 
+/* Memory for Rvar structures that store intermediate evaluations in __constant__ access memory */
+__constant__ Rvar gpu_int_evals[MAX_INT_VARS];
+
 /* Memory for size of loop iterations stored in __constant__ access memory for faster execution */
 __constant__ int gpu_iter_lens[MAX_ITERS];
 
@@ -124,6 +127,10 @@ void call_device() {
   store_expr_lens();
   int max_len = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
 
+  /* Initialize and copy the intermediate evaluation variables  */
+  initialize_int_evals();
+  store_int_evals();
+
   /* Calculate the number of evals needed per block and raise error if this exceeds */
   /* the maximum number of evaluations per block that has been pre calculated based */
   /* on a CUDA device with at least 48kb of __shared__ memory per SM. Note that the */
@@ -137,6 +144,7 @@ void call_device() {
   
   if (evals_per_thread > MAX_EVALS_PER_THREAD) {
     printf("Error: Data too large for simultaneous execution on device\n");
+    return;
   }
   else {
     // CHECK HOW EFFICIENT 2 BLOCKS_PER_SM IS WITH SIMILAR SHARED MEMSIZE PER BLOCK
@@ -199,6 +207,28 @@ void initialize_expr_lens() {
 }
 
 
+/*
+ * Initializes the lengths and dimensions of intermediate evaluation variables
+ * used to store evaluations of matrix function arguments
+ */
+
+void initialize_int_evals() {
+  
+  /* Used to intitialize len and data fields  */
+  int len = 0;  
+
+  // [[Int.evals::start]]
+  len = /* parsed expr len */
+  g_int_evals[/*x*/] = {
+    .data = (double*) malloc_device(sizeof(double) * len),
+    .len = len,
+    .rdim = /* parsed expr rdim */,
+    .cdim = /* parsed expr cdim */
+  };
+  g_int_eval_count = /* R::g_int_eval_count */;
+  // [[Int.evals::end]]
+}
+
 
 /*
  * Copies variable info stored in CPU memory to __constant__ GPU memory
@@ -224,7 +254,6 @@ void store_iter_lens() {
            cudaGetErrorString(err));
   }
   cudaDeviceSynchronize();
-
 }
 
 
@@ -240,6 +269,20 @@ void store_expr_lens() {
            cudaGetErrorString(err));
   }
   cudaDeviceSynchronize();
-
 }
+
+
+/*
+ * Copies intermediate Rvar structures from CPU memory to __constant__ memory
+ */
+
+void store_int_evals() {
+  cudaError_t err = cudaMemcpyToSymbol(gpu_int_evals, g_int_evals, sizeof(Rvar) * g_int_eval_count);
+  if (err != cudaSuccess) {
+    printf("CUDA error while copying intermediate evaluations to __constant__ memory: %s\n", 
+           cudaGetErrorString(err));
+  }
+  cudaDeviceSynchronize();
+}
+
 

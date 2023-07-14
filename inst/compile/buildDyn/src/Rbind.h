@@ -6,6 +6,7 @@
 #define MAX_VARS (100)
 #define MAX_ITERS (10)
 #define MAX_EXPRS (50)
+#define MAX_INT_VARS (50)
 
 /* Structure type which holds all presevered information about a corresponding R object */
 typedef struct Rvar_info{
@@ -16,10 +17,15 @@ typedef struct Rvar_info{
 } Rvar;
 
 
-/* Global array of pointers to R objects bound in compiled memory */
-/* and the number of the R object pointers                        */
+/* Global array of R objects bound in compiled memory */
+/* and the number of the R object pointers            */
 extern Rvar g_vars[MAX_VARS];
 extern int g_var_count;
+
+/* Global array of R objects that are used for intermediate */
+/* evaluation steps for matrix operations                   */
+extern Rvar g_int_evals[MAX_INT_VARS];
+extern int g_int_eval_count;
 
 /* Global array of sizes for each looping iteration data vector */
 extern int g_iter_lens[MAX_ITERS];
