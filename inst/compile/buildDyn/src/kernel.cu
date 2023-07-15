@@ -117,6 +117,10 @@ void call_device() {
 
   /* Copy the Rvars into __constant__ memory for faster execution in kernel */
   store_vars();
+
+  /* Initialize and copy the intermediate evaluation variables  */
+  initialize_int_evals();
+  store_int_evals();
   
   /* Intialize and copy the iter lens into __constant__ memory for faster execution in kernel */
   initialize_iter_lens();
@@ -126,10 +130,6 @@ void call_device() {
   initialize_expr_lens();
   store_expr_lens();
   int max_len = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
-
-  /* Initialize and copy the intermediate evaluation variables  */
-  initialize_int_evals();
-  store_int_evals();
 
   /* Calculate the number of evals needed per block and raise error if this exceeds */
   /* the maximum number of evaluations per block that has been pre calculated based */
@@ -157,9 +157,11 @@ void call_device() {
   cudaLaunchCooperativeKernel((void*) kernel, deviceProp.multiProcessorCount * BLOCKS_PER_SM, 
                               THREADS_PER_BLOCK, args);
 
-  // Wait for GPU to finish before accessing on host
+  /* Require GPU synchronize before CPU resume execution  */
   cudaDeviceSynchronize();
-  
+
+  /* Clean up memory from intermediate evaluations on GPU */
+  free_int_evals();
 }
 
 
@@ -227,6 +229,17 @@ void initialize_int_evals() {
   };
   g_int_eval_count = /* R::g_int_eval_count */;
   // [[Int.evals::end]]
+}
+
+
+/*
+ * Frees the allocated memory associated with intermediate evaluations
+ */
+
+void free_int_evals() {
+  for (int i = 0; i < g_int_eval_count; i++) {
+    free_device(g_int_evals[i].data);
+  }
 }
 
 

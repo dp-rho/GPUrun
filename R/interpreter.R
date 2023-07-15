@@ -58,10 +58,6 @@ STORE_RESULT <- "evals";
 THREADS_PER_BLOCK <- "THREADS_PER_BLOCK"
 EVALS_PER_THREAD <- "gpu_evals_per_thread"
 
-g_loop_env <- new.env(parent = .GlobalEnv)
-g_expr_env <- new.env(parent = .GlobalEnv)
-g_int_eval_env <- new.env(parent = .GlobalEnv)
-
 # Writes kernel code to the relevant section of kernel.cu
 write_kernel <- function(expr_ls, var_names) {
   # get location of compile directory
@@ -119,37 +115,6 @@ write_kernel <- function(expr_ls, var_names) {
   base::writeLines(lines_to_write, kernel_path)
 }
 
-# Initializes all of the globally tracked variables used for parsing and 
-# storing machine generated expressions that determine iteration loop lengths
-init_iter_loop <- function(var_names) {
-  assign("g_loop_exprs", rep("0", MAX_LOOPS), envir = g_loop_env)
-  assign("cur_expr", "", envir = g_loop_env)
-  assign("parse_expr_len", parse_expr_len, envir = g_loop_env)
-  assign("g_loop_count", 0, envir = g_loop_env)
-  assign("var_names", var_names, envir = g_loop_env)
-}
-
-# Initializes all of the globally tracked variables used for parsing and 
-# storing machine generated expressions that determine expression lengths
-init_expr_lens <- function(var_names) {
-  assign("g_expr_lens", rep("0", MAX_EXPRS), envir = g_expr_env)
-  assign("cur_expr", "", envir = g_expr_env)
-  assign("parse_expr_len", parse_expr_len, envir = g_expr_env)
-  assign("g_expr_count", 0, envir = g_expr_env)
-  assign("var_names", var_names, envir = g_expr_env)
-}
-
-# Initializes all of the globally tracked variables used for parsing and 
-# storing machine generated expressions that determine intermediate evaluations
-init_int_evals <- function(var_names) {
-  assign("g_int_eval_lens", rep("0", MAX_INT_EVAL), envir = g_int_eval_env)
-  assign("g_int_eval_rdims", rep("0", MAX_INT_EVAL), envir = g_int_eval_env)
-  assign("g_int_eval_cdims", rep("0", MAX_INT_EVAL), envir = g_int_eval_env)
-  assign("cur_expr", "", envir = g_int_eval_env)
-  assign("parse_expr_len", parse_expr_len, envir = g_int_eval_env)
-  assign("g_int_eval_count", 0, envir = g_int_eval_env)
-  assign("var_names", var_names, envir = g_int_eval_env)
-}
 
 ##########################
 #### CONDENSE THE NEXT 2
@@ -378,6 +343,12 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
   
   # Check matrix multiplication function
   if (startsWith(expr_char_vec, RAW_MAT_MUL_FUN)) {
+    # browser()
+    if (expr_char_vec %in% g_int_eval_env$expr_to_eval_map &
+        !allocate_intermediate_exprs) {
+      var_index <- which(g_int_eval_env$expr_to_eval_map == expr_char_vec)
+      return(get_ref(var_index, var_mapping = var_mapping))
+    }
     args_start <- nchar(RAW_MAT_MUL_FUN) + 2
     args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
     additional_lines <- c()
@@ -396,6 +367,7 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
           additional_lines <- c(additional_lines,
                                 get_intermediate_evaluation(args[i], var_names))
           mapping <- GPU_INTERMEDIATE_EVAL_MAPPING
+          g_int_eval_env$expr_to_eval_map <- append(g_int_eval_env$expr_to_eval_map, args[i])
         }
         parsed_args[i] <- get_ref(g_int_eval_env$g_int_eval_count,
                                   var_mapping = mapping)
@@ -407,6 +379,7 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
     }
     cur_expr <- paste0(PARSED_MAT_MUL_FUN, "(", parsed_args[1], ", ", 
                        parsed_args[2], ", ", EVAL_DATA_INDEX, ")")
+    # browser()
     return(c(additional_lines, cur_expr))
   }
     
@@ -448,43 +421,6 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
   }
 }
 
-
-# Writes machine generated lines to create an intermediate evaluation step for 
-# the provided argument to some matrix function, additionally, global variables
-# used to track intermediate evaluations are updated, and the written lines
-# are returned
-get_intermediate_evaluation <- function(arg, var_names) {
-  
-  parsed_expr_arg_lines <- parse_expr(arg, var_names, DEFAULT_DEPTH)
-  save_int_eval(arg)
-  additional_lines <- get_additional_lines(parsed_expr_arg_lines)
-  final_expr <- parsed_expr_arg_lines[length(parsed_expr_arg_lines)]
-  
-  # Save the expressions meta info immediately before creating assign loop,
-  # since assign loop functionality relies on global variables that are updated
-  # by save_expr_len
-  save_expr_len(arg)
-  final_expr_assign_lines <- write_assign_loop(g_int_eval_env$g_int_eval_count,
-                                               final_expr,
-                                               var_mapping = GPU_INTERMEDIATE_EVAL_MAPPING)
-  return(c(additional_lines, final_expr_assign_lines, SYNC_GRID))
-}
-
-
-# Takes arguments representing the lines of machine generated code
-# that may or may not have additional lines for each argument that 
-# are necessary for evaluation of intermediate steps and combines 
-# and returns those additional lines into one vector
-get_additional_lines <- function(args) {
-  additional_lines <- c()
-  for (arg in args) {
-    len <- length(arg)
-    if (len > 1) {
-      additional_lines <- c(additional_lines, arg[1:(len - 1)])
-    }
-  }
-  return(additional_lines)
-}
 
 write_assign_loop <- function(var_index, eval_expr, var_mapping = GPU_MAPPING) {
   

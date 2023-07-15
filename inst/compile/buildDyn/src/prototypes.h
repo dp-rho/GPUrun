@@ -37,6 +37,9 @@ extern void initialize_expr_lens();
 /* Function which initializes intermediate evaluation Rvars using machine generated code  */
 extern void initialize_int_evals();
 
+/* Function which frees the GPU memory allocated for intermediate evaluations */
+extern void free_int_evals();
+
 /* Function which stores Rvar structures in __constant__ memory */
 extern void store_vars();
 
