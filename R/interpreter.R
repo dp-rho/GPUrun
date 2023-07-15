@@ -46,6 +46,9 @@ PARSED_RANGE_FUN <- "range"
 RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
 PARSED_MAT_MUL_FUN <- "mat_mul"
 
+RAW_TRANSPOSE_FUN <- paste0(OPEN_EXPR, "t")
+PARSED_TRANSPOSE_FUN <- "transpose"
+
 RAW_ASSIGN_FUN <- paste0(OPEN_EXPR, "<-")
 PARSED_ASSIGN_FUN <- "="
 
@@ -94,19 +97,19 @@ write_kernel <- function(expr_ls, var_names) {
                         indent_lines(SYNC_GRID, DEFAULT_DEPTH))
   }
   
+  # Write the dimensions of the intermediate evaluation Rvar structures
+  post_kernel_lines <- write_int_eval_vars(kernel_lines[stop_index:length(kernel_lines)], var_names,
+                                           g_int_eval_env$g_int_eval_lens, g_int_eval_env$g_int_eval_rdims,
+                                           g_int_eval_env$g_int_eval_cdims, g_int_eval_env$g_int_eval_count)
+  
   # Write the iteration expressions to the kernel code to allow initialization of loop lengths 
-  post_kernel_lines <- write_iter_loop_lens(kernel_lines[stop_index:length(kernel_lines)], 
+  post_kernel_lines <- write_iter_loop_lens(post_kernel_lines, 
                                             var_names, g_loop_env$g_loop_exprs, g_loop_env$g_loop_count)
   
   # Write the expression lengths and by extension the number of evaluations per 
   # thread to the initialization function, initialize_expr_lens()
   post_kernel_lines <- write_expr_eval_lens(post_kernel_lines, var_names,
                                             g_expr_env$g_expr_lens, g_expr_env$g_expr_count)
-  
-  # Write the dimensions of the intermediate evaluation Rvar structures
-  post_kernel_lines <- write_int_eval_vars(post_kernel_lines, var_names,
-                                           g_int_eval_env$g_int_eval_lens, g_int_eval_env$g_int_eval_rdims,
-                                           g_int_eval_env$g_int_eval_cdims, g_int_eval_env$g_int_eval_count)
 
   # Combine all lines to write to output
   lines_to_write <- c(lines_to_write, post_kernel_lines)
@@ -343,7 +346,11 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
   
   # Check matrix multiplication function
   if (startsWith(expr_char_vec, RAW_MAT_MUL_FUN)) {
-    # browser()
+
+    # If the expression is being parsed to identify lengths or dimensions
+    # and not to write the kernel, return the intermediate evaluation
+    # Rvar structure with memory access available on either GPU or CPU
+    # dependent on the var_mapping
     if (expr_char_vec %in% g_int_eval_env$expr_to_eval_map &
         !allocate_intermediate_exprs) {
       var_index <- which(g_int_eval_env$expr_to_eval_map == expr_char_vec)
@@ -379,7 +386,55 @@ parse_expr <- function(expr_char_vec, var_names, depth, index = EVAL_DATA_INDEX,
     }
     cur_expr <- paste0(PARSED_MAT_MUL_FUN, "(", parsed_args[1], ", ", 
                        parsed_args[2], ", ", EVAL_DATA_INDEX, ")")
-    # browser()
+
+    return(c(additional_lines, cur_expr))
+  }
+  
+  ## TODO CONDENSE ALL MATRIX PARSING TO ONE FUNCTION FOR MAJORITY OF 
+  # REPEATED CODE
+  
+  # Check matrix transpose function
+  if (startsWith(expr_char_vec, RAW_TRANSPOSE_FUN)) {
+    
+    # If the expression is being parsed to identify lengths or dimensions
+    # and not to write the kernel, return the intermediate evaluation
+    # Rvar structure with memory access available on either GPU or CPU
+    # dependent on the var_mapping
+    if (expr_char_vec %in% g_int_eval_env$expr_to_eval_map &
+        !allocate_intermediate_exprs) {
+      var_index <- which(g_int_eval_env$expr_to_eval_map == expr_char_vec)
+      return(get_ref(var_index, var_mapping = var_mapping))
+    }
+    args_start <- nchar(RAW_TRANSPOSE_FUN) + 2
+    args <- identify_args(substr(expr_char_vec, args_start, nchar(expr_char_vec)))
+    additional_lines <- c()
+    parsed_args <- c()
+    
+    # Check if matrix argument is not simple variable expressions, if so allocate
+    # intermediate Rvar used only for storing the sub expression evaluation data
+    if (!(args[1] %in% var_names)) {
+      
+      # Create additional lines of text to evaluate and save the intermediate
+      # expression and update globally tracked variables needed to retrieve 
+      # the intermediate evaluation by reference
+      mapping <- CPU_INTERMEDIATE_EVAL_MAPPING
+      if (allocate_intermediate_exprs) {
+        additional_lines <- c(additional_lines,
+                              get_intermediate_evaluation(args[1], var_names))
+        mapping <- GPU_INTERMEDIATE_EVAL_MAPPING
+        g_int_eval_env$expr_to_eval_map <- append(g_int_eval_env$expr_to_eval_map, args[1])
+      }
+      parsed_args[1] <- get_ref(g_int_eval_env$g_int_eval_count,
+                                var_mapping = mapping)
+    }
+    else {
+      parsed_args[1] <- parse_expr(args[1], var_names, depth, type = REF_EVAL,
+                                   allocate_intermediate_exprs = allocate_intermediate_exprs)
+    }
+    
+    cur_expr <- paste0(PARSED_TRANSPOSE_FUN, "(", parsed_args[1], ", ", 
+                       EVAL_DATA_INDEX, ")")
+    
     return(c(additional_lines, cur_expr))
   }
     
@@ -626,6 +681,23 @@ parse_expr_len <- function(expr_chars, var_names, type = LEN_TYPE) {
       return(paste0(arg2, ".cdim"))
     }
     return(paste0(arg1, ".rdim * ", arg2, ".cdim"))
+  }
+  
+  # Check transpose function
+  if (startsWith(expr_chars, RAW_TRANSPOSE_FUN)) {
+    args_start <- nchar(RAW_TRANSPOSE_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    if ((args[1] %in% var_names)) mapping <- CPU_MAPPING
+    else mapping <- CPU_INTERMEDIATE_EVAL_MAPPING 
+    arg1 <- parse_expr(args[1], var_names, depth, type = REF_EVAL, var_mapping = mapping,
+                       allocate_intermediate_exprs = FALSE)
+    if (type == RDIM_TYPE) {
+      return(paste0(arg1, ".cdim"))
+    }
+    else if (type == CDIM_TYPE) {
+      return(paste0(arg1, ".rdim"))
+    }
+    return(paste0(arg1, ".rdim * ", arg1, ".cdim"))
   }
   
 }

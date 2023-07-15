@@ -90,6 +90,25 @@ __device__ double mat_mul(Rvar arg1, Rvar arg2, int data_index) {
 
 
 /*
+ * Transpose matrix
+ */
+
+__device__ double transpose(Rvar arg, int data_index) {
+ 
+  /* Check if evaluation index is out of bounds of return matrix  */
+  if (data_index > arg.rdim * arg.cdim) return 0;
+
+  /* Identify the row and column index of the element being calculated  */
+  int row_index = data_index % arg.rdim;
+  int col_index = data_index / arg.rdim;
+
+  /* Return the transposed index of the argument matrix */
+  return arg.data[(arg.rdim * row_index) + col_index];
+ 
+}
+
+
+/*
  * Kernel function ran on the GPU
  */
 
