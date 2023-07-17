@@ -4,7 +4,10 @@
 # are returned
 get_intermediate_evaluation <- function(arg, var_names) {
   
-  parsed_expr_arg_lines <- parse_expr(arg, var_names, DEFAULT_DEPTH)
+  # If argument is a global variable, we do not need to evaluate it 
+  if (arg %in% var_names) return(NULL)
+  
+  parsed_expr_arg_lines <- parse_expr(arg, var_names)
   save_int_eval(arg)
   additional_lines <- get_additional_lines(list(parsed_expr_arg_lines))
   final_expr <- parsed_expr_arg_lines[length(parsed_expr_arg_lines)]
