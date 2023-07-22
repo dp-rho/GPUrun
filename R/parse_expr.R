@@ -122,7 +122,6 @@ parse_expr <- function(expr_chars, var_names, depth = DEFAULT_DEPTH,
 
   # Check matrix transpose function
   if (startsWith(expr_chars, RAW_TRANSPOSE_FUN)) {
-
     return(parse_matrix_expr(expr_chars, RAW_TRANSPOSE_FUN, var_names, var_mapping,
                              allocate_intermediate_exprs, PARSED_TRANSPOSE_FUN))
   }

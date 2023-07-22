@@ -122,9 +122,9 @@ void kernel(int grid_size)
   int _eval_data_index = 0;
   cooperative_groups::grid_group grid = cooperative_groups::this_grid();
 
-  // [[Kernel.start]]
+  // [[Kernel::start]]
   // Machine generated code
-  // [[Kernel.end]]
+  // [[Kernel::end]]
 }
 
 

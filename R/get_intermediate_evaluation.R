@@ -16,7 +16,7 @@ get_intermediate_evaluation <- function(arg, var_names) {
   # since assign loop functionality relies on global variables that are updated
   # by save_expr_len
   save_expr_len(arg)
-  final_expr_assign_lines <- write_assign_loop(g_int_eval_env$g_int_eval_count,
+  final_expr_assign_lines <- write_assign_loop(g_int_eval_env$count,
                                                final_expr,
                                                var_mapping = GPU_INTERMEDIATE_EVAL_MAPPING)
 

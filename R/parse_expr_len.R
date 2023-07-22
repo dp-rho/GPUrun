@@ -21,9 +21,10 @@ parse_expr_len <- function(expr_chars, var_names, type = LEN_TYPE) {
   }
   
   # Base case 2: a numeric constant
-  suppressWarnings(if (!is.na(as.numeric(expr_chars))) {
-    return(as.character(1))
-  }
+  suppressWarnings(
+    if (!is.na(as.numeric(expr_chars))) {
+      return(as.character(1))
+    }
   )
   
   # Assignment operator `<-`
