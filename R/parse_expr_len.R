@@ -5,7 +5,11 @@ CDIM_TYPE <- "cdim"
 # Recursive function which identifies the length of an expression by using R's 
 # rules for operating on vectors/matrices of different sizes, the output of 
 # this function is machine generated compiled code text
-parse_expr_len <- function(expr_chars, var_names, type = LEN_TYPE) {
+parse_expr_len <- function(
+    expr_chars, 
+    var_names, 
+    type = LEN_TYPE
+) {
   
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_chars)

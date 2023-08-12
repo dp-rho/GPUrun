@@ -7,14 +7,20 @@ START_FLAG <- -1
 END_FLAG <- 1
 OTHER_FLAG <- 0
 
-#' Identifies the start and end line indices of a specified character vector
+#' @title Identify the region of text to replace in lines of compiled code
+#' 
+#' @description
+#' Identifies the start and end line indices of a specified character string
 #' that represents the type of machine generated code that will be updated
 #' 
-#' @param flag_str A character vector representing the type of start and end
+#' @param text_lines A character vector that represents the lines of compiled
+#' code that will be used to search for the start and end indices of the
+#' provided type
+#' @param flag_str A character string representing the type of start and end
 #' flags that are to be constructed.  Must be one of "Kernel", "Iter.lens",
 #' "Expr.lens", or "Int.evals".
 #' 
-#' @returns List of start and end indices for the specified flag_str
+#' @returns Vector of start and end indices for the specified flag_str
 #' @examples
 #' find_start_end_lines("Kernel")
 find_start_end_lines <- function(
@@ -30,16 +36,20 @@ find_start_end_lines <- function(
   return(list(start = start_index, end = end_index))
 }
 
+#' @title Matches compiled code flags against an input
+#' 
+#' @description
 #' Match the input start and end flags against the input character
 #' vector which is expected to be a line of code in kernel.cu. Return integer
 #' that represents either the start index, end index, or other, which is ignored.
 #' 
-#' @param input_str A character vector representing the line of text that 
+#' @param input_str A character string representing the line of text that 
 #' will be searched for a match of either the start or end flag
-#' @param start_flag_str A character vector representing the start flag 
-#' @param end_flag_str A character vector representing the end flag
+#' @param start_flag_str A character string representing the start flag 
+#' @param end_flag_str A character string representing the end flag
 #' 
-#' @returns List of start and end indices for the specified flag_str
+#' @returns Integer representing a flag that indicates whether to start, end,
+#' or not relevant.
 #' @examples
 #' match_flags("Kernel")
 match_flags <- function(
@@ -56,14 +66,17 @@ match_flags <- function(
   return(OTHER_FLAG);
 }
 
+#' @title Create the character flags to search for in the compiled code
+#' 
+#' @description
 #' Construct start and end flag strings to be matched against lines 
 #' in machine updated kernel.cu file
 #' 
-#' @param flag_str A character vector representing the type of start and end
+#' @param flag_str A character string representing the type of start and end
 #' flags that are to be constructed.  Must be one of "Kernel", "Iter.lens",
 #' "Expr.lens", or "Int.evals".
 #' 
-#' @returns list of start and end flag strings for the input flag type
+#' @returns List of two character strings, a start flag and end flag.
 #' @examples
 #' construct_flags("Kernel")
 construct_flags <- function(

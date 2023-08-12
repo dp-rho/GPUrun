@@ -9,3 +9,4 @@ Description: Interprets and compiles basic R expressions operating on vectors an
 License: GPL (>= 2)
 Imports: Rcpp (>= 1.0.10)
 LinkingTo: Rcpp
+RoxygenNote: 7.2.3

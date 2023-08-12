@@ -48,7 +48,7 @@ get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
       # Parse the argument using the identified mapping, in this case the only
       # thing returned from parse_expr will be a Rvar ref with memory type 
       # dependent on the mapping generated in this function
-      parsed_args[i] <- parse_expr(args[i], var_names, type = REF_EVAL, 
+      parsed_args[i] <- parse_expr(args[i], var_names, type = "ref", 
                                    var_mapping = mapping,
                                    allocate_intermediate_exprs = FALSE)
     }

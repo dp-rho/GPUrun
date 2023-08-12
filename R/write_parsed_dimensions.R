@@ -1,4 +1,7 @@
-
+#' @title Writes machine generated code to update a compiled initialization
+#' of dimesions
+#' 
+#' @description
 #' Writes dimension information stored in a globally accessible environment
 #' for either intermediate evaluations, expression lengths, or loop iterations
 #' to the input vector of character strings that represents the lines of 
