@@ -1,5 +1,5 @@
-#' @title Writes machine generated code to update a compiled initialization
-#' of dimesions
+#' @title Writes code to update a compiled initialization
+#' of dimensions
 #' 
 #' @description
 #' Writes dimension information stored in a globally accessible environment
@@ -29,7 +29,12 @@ write_parsed_dimensions <- function(
   lambda <- function(i) g_var_env$write_fun(i, g_var_env$exprs_to_write[[i]])
   
   # write expressions based on the saved information g_var_env
-  updated_lines <- unlist(lapply(1:g_var_env$count, lambda))
+  if (g_var_env$count > 0) { 
+    updated_lines <- unlist(lapply(1:g_var_env$count, lambda))
+  }
+  else {
+    updated_lines <- c()
+  }
   
   # write the global count of the parsed information
   updated_lines <- c(updated_lines, paste0(g_var_env$count_str, " = ", 

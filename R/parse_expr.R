@@ -22,15 +22,16 @@ PARSED_FOR_FUN <- "for"
 
 RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
 
-#' @title Recursively parse character expression to generate machine written 
-#' compiled code
+LOOP_ITER_VARS <- paste0("i", 0:9)
+
+#' @title Recursively parse character expression to generate compiled code
 #'
 #' @description
-#' Recursive function that takes a character string and parses the vector into
+#' Recursive function that takes a character string and parses the string into
 #' a vector of potentially multiple character strings of machine generated 
-#' code to written to kernel.cu. The allocation flag variable determines 
+#' code to be written to kernel.cu. The allocation flag variable determines 
 #' whether this is the initial top level call that creates code for the 
-#' kernel function, in which case additional intermediate evaluations will be
+#' kernel function, in which case additional intermediate evaluation Rvars will be
 #' allocated if matrix arguments are not direct Rvar references. If instead this
 #' call is only to parse dimensional information, allocate flag will be FALSE
 #' and no additional intermediate evaluations will be allocated.
@@ -46,7 +47,7 @@ RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
 #' @param type A character string which, if applicable, determines whether 
 #' an reference to an entire Rvar structure or an index of data in that Rvar
 #' structure is parsed.
-#' @param var_mapping A character string which, if applicable, controls which
+#' @param var_mapping A character string which controls which
 #' type of memory and Rvar is parsed.  The memory may be accessible on either 
 #' the GPU or the CPU, but not both, and the Rvar may be part of the global 
 #' array that holds all R variables read into memory, or part of the intermediate
@@ -66,14 +67,15 @@ RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
 parse_expr <- function(
     expr_chars, 
     var_names, 
-    index = c("_eval_data_index", "_shared_mem_index", "DEFAULT_DATA_INDEX",
-              paste0("i", 0:9)), 
+    index = c(EVAL_DATA_INDEX, SHARED_MEM_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS), 
     type = c("data", "ref"), 
-    var_mapping = c("gpu_vars", "g_vars", "gpu_int_evals", "g_int_evals"),
+    var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
+                    CPU_INTERMEDIATE_EVAL_MAPPING),
     depth = 0,
     allocate_intermediate_exprs = TRUE
 ) {
-  
+
+  # Match args
   type <- match.arg(type)
   index <- match.arg(index)
   var_mapping <- match.arg(var_mapping)
@@ -189,8 +191,12 @@ parse_expr <- function(
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     parsed_args <- lapply(args, parse_expr, var_names = var_names, depth = depth,
                           index = index, allocate_intermediate_exprs = allocate_intermediate_exprs)
-    parsed_args <- c(lapply(parsed_args[1:(length(parsed_args) - 1)], append, values = SYNC_GRID),
-                     parsed_args[length(parsed_args)])
+    
+    # If there are multiple arguments to run, sync after each command executed
+    if (length(parsed_args) > 1) {
+      parsed_args <- c(lapply(parsed_args[1:(length(parsed_args) - 1)], append, values = SYNC_GRID),
+                       parsed_args[length(parsed_args)])
+    }
     return(unlist(parsed_args, recursive = FALSE, use.names = FALSE))
   }
   

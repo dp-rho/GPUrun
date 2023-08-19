@@ -134,6 +134,7 @@ write_for_loop <- function(args, var_names, depth) {
   # Recursive call to parse the expression (can actually be multiple expressions using '{' function) 
   # executed by this for loop
   execute_line <- parse_expr(args[3], var_names, depth = depth + 1)
+  
 
   # The full lines of text for the parsed loop, includes the update to the iteration variable,
   # the execution of the body expression(s), and a synchronization command to ensure that

@@ -35,10 +35,10 @@ get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
       # Identify the correct GPU mapping, whether it is global Rvars or 
       # intermediate evaluations, and also identify correct index to access 
       # the specific Rvar that is required
-      gpu_mapping <- eval(parse(text = paste(GPU_PARSING, ref_type, sep = "_")))
+      mapping <- eval(parse(text = paste(GPU_PARSING, ref_type, sep = "_")))
       if (!length(index)) index <- g_int_eval_env$count
       
-      parsed_args[i] <- get_ref(index, var_mapping = gpu_mapping)
+      parsed_args[i] <- get_ref(index, var_mapping = mapping)
     }
     else {
 
