@@ -20,15 +20,18 @@ init_iter_loop <- function(
     return(paste0("g_iter_lens[", index_to_write - 1, "] = ", expr_to_write, ";"))
   }
   
+  update_expr <- substitute(exprs_to_write[count + 1] <- parse_expr_dim(cur_expr, var_names)$len)
+  
   # Assign values to all globally tracked variables in the environment
-  assign("exprs_to_write", rep("0", MAX_LOOPS), envir = g_loop_env)
+  assign("exprs_to_write", rep("EMPTY", MAX_LOOPS), envir = g_loop_env)
   assign("cur_expr", "", envir = g_loop_env)
-  assign("parse_expr_len", parse_expr_len, envir = g_loop_env)
+  assign("parse_expr_dim", parse_expr_dim,, envir = g_loop_env)
   assign("count", 0, envir = g_loop_env)
   assign("count_str", "g_iter_count", envir = g_loop_env)
   assign("var_names", var_names, envir = g_loop_env)
   assign("write_fun", write_fun, envir = g_loop_env)
   assign("flag_str", "Iter.lens", envir = g_loop_env)
+  assign("update_expr", update_expr, envir = g_loop_env)
 }
 
 # Initializes all of the globally tracked variables used for parsing and 
@@ -49,14 +52,17 @@ init_expr_lens <- function(
     return(c(save_len, update_evals))
   }
   
-  assign("exprs_to_write", rep("0", MAX_EXPRS), envir = g_expr_env)
+  update_expr <- substitute(exprs_to_write[count + 1] <- parse_expr_dim(cur_expr, var_names)$len)
+  
+  assign("exprs_to_write", rep("EMPTY", MAX_EXPRS), envir = g_expr_env)
   assign("cur_expr", "", envir = g_expr_env)
-  assign("parse_expr_len", parse_expr_len, envir = g_expr_env)
+  assign("parse_expr_dim", parse_expr_dim, envir = g_expr_env)
   assign("count", 0, envir = g_expr_env)
   assign("count_str", "g_expr_count", envir = g_expr_env)
   assign("var_names", var_names, envir = g_expr_env)
   assign("write_fun", write_fun, envir = g_expr_env)
   assign("flag_str", "Expr.lens", envir = g_expr_env)
+  assign("update_expr", update_expr, envir = g_expr_env)
 }
 
 # Initializes all of the globally tracked variables used for parsing and 
@@ -78,6 +84,11 @@ init_int_evals <- function(var_names) {
       var_inits <- c(indent_lines(var_inits), "};")
     return(c(len_assign, var_assign, var_inits))
   }
+  
+  update_expr <- substitute({
+    exprs_to_write[[count + 1]] <- parse_expr_dim(cur_expr, var_names)
+    expr_to_eval_map <- append(expr_to_eval_map, cur_expr)
+  })
 
   dim_names <- c("len", "rdim", "cdim")
   empty_dims_list <- replicate(MAX_INT_EVAL, 
@@ -86,10 +97,11 @@ init_int_evals <- function(var_names) {
   assign("exprs_to_write", empty_dims_list, envir = g_int_eval_env)
   assign("expr_to_eval_map", list(), envir = g_int_eval_env)
   assign("cur_expr", "", envir = g_int_eval_env)
-  assign("parse_expr_len", parse_expr_len, envir = g_int_eval_env)
+  assign("parse_expr_dim", parse_expr_dim,, envir = g_int_eval_env)
   assign("count", 0, envir = g_int_eval_env)
   assign("count_str", "g_int_eval_count", envir = g_int_eval_env)
   assign("var_names", var_names, envir = g_int_eval_env)
   assign("write_fun", write_fun, envir = g_int_eval_env)
   assign("flag_str", "Int.evals", envir = g_int_eval_env)
+  assign("update_expr", update_expr, envir = g_int_eval_env)
 }

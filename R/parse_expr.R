@@ -180,7 +180,7 @@ parse_expr <- function(
                                   allocate_intermediate_exprs = allocate_intermediate_exprs)
     additional_lines <- get_additional_lines(list(eval_expr_lines))
     eval_expr <- eval_expr_lines[length(eval_expr_lines)]
-    save_expr_len(expr_chars)
+    save_dim_info(expr_chars, g_expr_env)
     assign_lines <- write_assign_loop(var_index, eval_expr)
     return(c(additional_lines, assign_lines))
   }
