@@ -64,6 +64,8 @@ LOOP_ITER_VARS <- paste0("i", 0:9)
 #' 
 #' @returns character vector that represents lines of machine written compiled
 #' code
+#' @examples
+#' parse_expr(expr_chars, var_names)
 parse_expr <- function(
     expr_chars, 
     var_names, 

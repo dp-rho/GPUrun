@@ -27,5 +27,10 @@ get_ref <- function(
     var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                     CPU_INTERMEDIATE_EVAL_MAPPING) 
 ) {
+  
+  # Match args
+  var_mapping <- match.arg(var_mapping)
+  
+  # Return compiled code format of Rvar structure, i.e., g_vars[0]
   return(paste0(var_mapping, "[", as.character(var_num - 1), "]"))
 }

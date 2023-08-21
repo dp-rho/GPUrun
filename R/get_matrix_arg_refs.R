@@ -1,14 +1,39 @@
 # The partial names of global constants used in parsing expressions and dimensions
-GPU_PARSING <- "GPU"
-CPU_PARSING <- "CPU"
-RVAR_REF <- "MAPPING"
-INT_EVAL_REF <- "INTERMEDIATE_EVAL_MAPPING"
+GPU_PARSING <- "gpu"
+CPU_PARSING <- "g"
+RVAR_REF <- "vars"
+INT_EVAL_REF <- "int_evals"
 
-# Identify the argument references of a matrix function call, note that these
-# may be either default global Rvar references, or intermediate eval references
-# that exist only to store intermediate evaluations between nested matrix
-# function calls.  Note that this may also return additional lines of text
-# that must be evaluated prior to the current expression
+#' @title Retrieve argument references for a matrix function
+#' 
+#' @description
+#' Identify the argument references of a matrix function call, note that these
+#' may be either default global Rvar references, or intermediate eval references
+#' that exist only to store intermediate evaluations inside nested matrix
+#' function calls.  Note that this may also return additional lines of text
+#' that must be evaluated prior to the current expression
+#' 
+#' @param expr_chars A character string representing the unparsed expression
+#' for which the argument references are to be retrieved.
+#' @param matrix_fun_str A character string representing the matrix function
+#' itself, this is needed only to identify the arguments' starting locations.
+#' @param var_names A character vector that represents the the named R variables
+#' included in these commands.
+#' @param allocate_intermediate_exprs A Boolean indicating whether intermediate
+#' evaluations should be allocated and returned as additional lines of code
+#' that must be executed prior to the parsed argument references being used.
+#' If this is false, it means the call is being used only to parse dimensional
+#' information and not as part of the top level parsing call used to generate
+#' the actual code in the kernel function.
+#' 
+#' @returns List of two character vectors, with named value 'additional_lines'
+#' representing the lines of code needed to ensure the intermediate evaluation 
+#' arguments are correct, if applicable, and the named value 'parsed_args' 
+#' representing the names of the Rvar structures to be used as the arguments
+#' to the current matrix expression.
+#' @examples
+#' get_matrix_arg_refs(expr_chars, matrix_fun_str, var_names, 
+#'                     allocate_intermediate_exprs)
 get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
                                 allocate_intermediate_exprs) {
   
@@ -35,7 +60,7 @@ get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
       # Identify the correct GPU mapping, whether it is global Rvars or 
       # intermediate evaluations, and also identify correct index to access 
       # the specific Rvar that is required
-      mapping <- eval(parse(text = paste(GPU_PARSING, ref_type, sep = "_")))
+      mapping <- paste(GPU_PARSING, ref_type, sep = "_")
       if (!length(index)) index <- g_int_eval_env$count
       
       parsed_args[i] <- get_ref(index, var_mapping = mapping)
@@ -43,7 +68,7 @@ get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
     else {
 
       # Get the compiled code array name of the selected reference type
-      mapping <- eval(parse(text = paste(CPU_PARSING, ref_type, sep = "_")))
+      mapping <- paste(CPU_PARSING, ref_type, sep = "_")
       
       # Parse the argument using the identified mapping, in this case the only
       # thing returned from parse_expr will be a Rvar ref with memory type 

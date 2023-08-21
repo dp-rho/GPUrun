@@ -1,7 +1,22 @@
-# Writes machine generated lines to create an intermediate evaluation step for 
-# the provided argument to some matrix function, additionally, global variables
-# used to track intermediate evaluations are updated, and the written lines
-# are returned
+#' @title Writes code to evaluate and save nested matrix argument
+#' 
+#' @description
+#' Writes compiled code necessary to execute a nested matrix function, then save
+#' the results of that expression into an intermediate evaluation Rvar that will
+#' be retrieved as the argument of the parent expression calling this function.
+#' 
+#' @param arg A character string representing the argument that may or may not
+#' be a nested matrix function  If this arg is not a simple reference to a 
+#' global Rvar, the function proceeds to generate code to execute the nested
+#' matrix function and save the result in an intermediate evaluation Rvar.
+#' @param var_names A character vector that represents the the named R variables
+#' included in these commands.
+#' 
+#' @returns Character vector representing the lines of code needed to evaluate
+#' the nested matrix function and save the results in the newly created 
+#' intermediate Rvar that will then be referenced by the parent expression.
+#' @examples
+#' get_intermediate_evaluation(arg, var_names)
 get_intermediate_evaluation <- function(
     arg, 
     var_names

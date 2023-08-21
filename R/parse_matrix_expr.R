@@ -1,5 +1,44 @@
 
-
+#' @title Recursively parse a matrix function call to generate compiled code
+#'
+#' @description
+#' Matrix specific function that takes a character string and parses the string 
+#' into a vector of potentially multiple character strings of machine generated 
+#' code to be written to kernel.cu. The allocation flag variable determines 
+#' whether this is the initial top level call that creates code for the 
+#' kernel function, in which case additional intermediate evaluation Rvars will be
+#' allocated if matrix arguments are not direct Rvar references. If instead this
+#' call is only to parse dimensional information, allocate flag will be FALSE
+#' and no additional intermediate evaluations will be allocated. This function
+#' is designed only for matrix function calls.
+#' 
+#' @param expr_chars A character string that represents the expression currently
+#' being parsed.  This expression string will have the general form of 
+#' (fun arg1 arg2 ... argn) with any number of args, and fun being some matrix
+#' function specifically.  
+#' @param var_names A character vector with the names of all variables that 
+#' are included in the compiled commands. This is used to identify the index
+#' of the Rvar structure in a compiled global array.
+#' @param var_mapping A character string which controls which
+#' type of memory and Rvar is parsed.  The memory may be accessible on either 
+#' the GPU or the CPU, but not both, and the Rvar may be part of the global 
+#' array that holds all R variables read into memory, or part of the intermediate
+#' evaluations array used to store intermediate evaluation matrix arguments.
+#' @param depth An integer representing the depth of loop iterations currently
+#' being used. This determines the name of the iteration variable used.
+#' @param allocate_intermediate_exprs Boolean flag which, if TRUE, results in 
+#' allocating additional intermediate evaluation variables in compiled memory
+#' to save nested matrix arguments and prevent repeated evaluations through
+#' recursion. If FALSE, this call to parse_expr is being used only for 
+#' dimension parsing, and so we do not reallocate nested matrix arguments, as
+#' dimension parsing occurs after the initial parsing and the allocation is 
+#' already complete.
+#' 
+#' @returns character vector that represents lines of machine written compiled
+#' code for the matrix function call
+#' @examples 
+#' parse_matrix_expr(expr_chars, raw_fun_str, var_names, var_mapping,
+#'                   allocate_intermediate_exprs, parsed_fun_str)
 parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
                               allocate_intermediate_exprs, parsed_fun_str) {
   
@@ -7,7 +46,6 @@ parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
   # and not to write the kernel, return the intermediate evaluation
   # Rvar structure with memory access available on either GPU or CPU
   # dependent on the var_mapping
-
   if (expr_chars %in% g_int_eval_env$expr_to_eval_map &
       !allocate_intermediate_exprs) {
     var_index <- which(g_int_eval_env$expr_to_eval_map == expr_chars)

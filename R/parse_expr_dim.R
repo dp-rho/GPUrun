@@ -1,12 +1,20 @@
-LEN_TYPE <- "len"
-RDIM_TYPE <- "rdim"
-CDIM_TYPE <- "cdim"
-FIELD_OF <- "."
-DIMS <- c(LEN_TYPE, RDIM_TYPE, CDIM_TYPE)
-
-# Recursive function which identifies the length of an expression by using R's 
-# rules for operating on vectors/matrices of different sizes, the output of 
-# this function is machine generated compiled code text
+#' @title Parse dimensional information of expression
+#' 
+#' @description
+#' Recursive function which identifies the dimensional information, specifically
+#' length, number of rows, and number of columns, of the input R expression.
+#' 
+#' @param expr_chars A character string representing the unparsed expression
+#' for which the dimensions are to be identified.
+#' @param var_names A character vector that represents the the named R variables
+#' included in these commands.
+#' 
+#' @returns A named list with 3 elements, the element of 'len' representing 
+#' the length of the expression, the element of 'rdim' representing the number
+#' of rows in the expression, and the element of 'cdim' representing the number
+#' of columns in the expression.
+#' @examples
+#' parse_expr_dim(expr_chars, var_names)
 parse_expr_dim <- function(
     expr_chars, 
     var_names
@@ -61,7 +69,8 @@ parse_expr_dim <- function(
     # Default case of op(a, b), with op some elementwise math function
     parsed_args <- lapply(args, parse_expr_dim, var_names = var_names)
 
-    # browser()
+    # The dimension of an elementwise math function is always the max of the 
+    # arguments' dimensions
     dims <- lapply(DIMS, function(dim_type) {paste0("std::max(", parsed_args[[1]][[dim_type]], 
                                              ", ", parsed_args[[2]][[dim_type]], ")")})
     names(dims) <- DIMS

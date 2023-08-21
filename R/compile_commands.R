@@ -5,10 +5,25 @@ PSEUDO_NAME <- "buildDyn"
 INSTALL_LOC <- "installed_temp"
 RLIBS <- "libs"
 
-
-# Compiles a list of expressions into a .so binary that can called
-# in the current R session by using the object returned from this
-# function call
+#' @title Parse R expressions into parallel CUDA code and compile
+#' 
+#' @description
+#' Parses the list of input R expressions into CUDA code, including dimensional
+#' information executed on CPU prior to GPU device call. Also compiles the 
+#' generated machine code into a pseduo R package that can be called using
+#' run_commands.
+#' 
+#' @param expr_ls A character string representing the unparsed expression
+#' for which the dimensions are to be identified.
+#' 
+#' @returns A commands objects that holds the meta information necessary for
+#' executing the compiled commands from a specified environment.
+#' @examples
+#' expr_ls <- list(substitute(x <- x + 1))
+#' 
+#' commands_object <- compile_commands(expr_ls)
+#' 
+#' run_commands(commands_object, environment())
 compile_commands <- function(expr_ls) {
 
   # get the list of variable names in an ordered list
@@ -17,7 +32,7 @@ compile_commands <- function(expr_ls) {
 
   # write machine generated code to .cu file that will 
   # compiled with included .cpp files
-  write_kernel(expr_ls, var_names)
+  interpreter(expr_ls, var_names)
   
   # get location of compile directory
   compile_path <- system.file("compile", package = "GPUrun")
@@ -50,31 +65,4 @@ compile_commands <- function(expr_ls) {
       vars = var_names
     )
   )
-}
-
-
-# Top level function to run compiled commands in the input environment
-run_commands <- function(compiled_commands, eval_env) {
-  
-  # get compiled temp lib loaded to the namespace
-  compile_path <- system.file("compile", package = "GPUrun")
-  temp_installed_path <- file.path(compile_path, INSTALL_LOC)
-  library(compiled_commands$key, lib.loc = temp_installed_path,
-          character.only = T)
-  
-  # bind the variables in the compiled_command R object to compiled memory
-  eval(parse(text = paste0(compiled_commands$key, 
-                           "_bind_vars(compiled_commands$vars, eval_env)")))
-  
-  # evaluate the commands with parallel compiled code
-  eval(parse(text = paste0(compiled_commands$key, "_execute_commands()")))
-  
-  # update the R variables in the evaluated environment with the 
-  # values retrieved from the compiled run of the commands
-  # and free the variables in compiled memory
-  eval(parse(text = paste0(compiled_commands$key, 
-                           "_update_vars(compiled_commands$vars, eval_env)")))
-  
-  # unload the temporary package
-  unloadNamespace(compiled_commands$key)
 }

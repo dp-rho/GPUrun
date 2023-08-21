@@ -27,6 +27,11 @@ find_start_end_lines <- function(
     text_lines, 
     flag_str = c("Kernel", "Iter.lens","Expr.lens", "Int.evals")
 ) {
+  
+  # Match args
+  flag_str <- match.arg(flag_str)
+  
+  # Construct and identify full flags in compiled code
   flag_strs <- construct_flags(flag_str)
   mapped_matches <- as.vector(lapply(text_lines, match_flags,
                                      start_flag_str = flag_strs$start,
