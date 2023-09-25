@@ -2,8 +2,8 @@
 % Please edit documentation in R/write_parsed_dimensions.R
 \name{write_parsed_dimensions}
 \alias{write_parsed_dimensions}
-\title{Writes machine generated code to update a compiled initialization
-of dimesions}
+\title{Writes code to update a compiled initialization
+of dimensions}
 \usage{
 write_parsed_dimensions(
   lines_to_edit,

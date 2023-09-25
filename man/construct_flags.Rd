@@ -12,7 +12,7 @@ flags that are to be constructed.  Must be one of "Kernel", "Iter.lens",
 "Expr.lens", or "Int.evals".}
 }
 \value{
-list of start and end flag strings for the input flag type
+List of two character strings, a start flag and end flag.
 }
 \description{
 Construct start and end flag strings to be matched against lines 

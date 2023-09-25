@@ -19,7 +19,7 @@ flags that are to be constructed.  Must be one of "Kernel", "Iter.lens",
 "Expr.lens", or "Int.evals".}
 }
 \value{
-List of start and end indices for the specified flag_str
+Vector of start and end indices for the specified flag_str
 }
 \description{
 Identifies the start and end line indices of a specified character string

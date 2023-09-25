@@ -15,7 +15,8 @@ will be searched for a match of either the start or end flag}
 \item{end_flag_str}{A character string representing the end flag}
 }
 \value{
-List of start and end indices for the specified flag_str
+Integer representing a flag that indicates whether to start, end,
+or not relevant.
 }
 \description{
 Match the input start and end flags against the input character
