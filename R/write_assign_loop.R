@@ -5,6 +5,9 @@ SHARED_MEM_INDEX <- "_shared_mem_index"
 EVAL_DATA_INDEX <- "_eval_data_index"
 EVAL_LOOP_INDEX <- "_eval_index"
 
+TEMP_RET <- "//[[RET::VAL]]"
+TEMP_EVALS <- "//[[TEMP::EVALS]]"
+
 #' @title Writes code to assign an expression's return value
 #' 
 #' @description
@@ -38,6 +41,16 @@ write_assign_loop <- function(
   # determines how many evaluations are needed in each thread
   var_ref <- get_ref(var_index, var_mapping =  var_mapping)
   var_len <- paste0(var_ref, ".len")
+  
+  # Special case where the function being assigned directly handles
+  # the assignment to target memory
+  void_index <- which(startsWith(eval_expr, VOID_RET_FUNS))
+  if (length(void_index) != 0) {
+    cur_evals_per_thread <- paste0(EVALS_PER_THREAD, "[", as.character(g_expr_env$count - 1), "]")
+    eval_expr <- gsub(TEMP_RET, paste0(var_ref, ".", "data"), eval_expr, fixed = TRUE)
+    eval_expr <- gsub(TEMP_EVALS, cur_evals_per_thread, eval_expr, fixed = TRUE)
+    return(paste0(eval_expr, ";"))
+  }
   
   # The __shared__ memory array that stores evaluated results while the current
   # thread evaluates other indices, this allows efficient intermediate storage

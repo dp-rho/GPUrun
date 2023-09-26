@@ -13,6 +13,9 @@ __constant__ int gpu_iter_lens[MAX_ITERS];
 /* Memory for size of expressions stored in __constant__ access memory for faster execution */
 __constant__ int gpu_evals_per_thread[MAX_EXPRS];
 
+/* Memory to be allocated on the GPU that is only used in scratch calculations  */
+double* scratch_gpu_memory;
+
 
 /* Define functions available to kernel */
 
@@ -109,11 +112,100 @@ __device__ double transpose(Rvar arg, int data_index) {
 
 
 /*
+ * Inverse matrix using Gauss-Jordan elimination
+ * Note: This function does not return a value directly and instead
+ * updates values in the pointer argument working_result
+ */
+
+__device__ void inverse(Rvar matrix_arg, double* working_copy, double* working_result,
+                        int grid_index, int evals_per_thread, int grid_size, int thread_index,
+                        double* shared_mem_arr, cooperative_groups::grid_group grid) {
+
+  /* Copy in matrix arg to the working copy, set working_result to identity matrix  */
+  int data_index = grid_index;
+  for (int i = 0; i < evals_per_thread; i++) {
+    
+    /* Check overflow */
+    if (data_index >= matrix_arg.len) break;
+
+    /* Copy data */
+    working_copy[data_index] = matrix_arg.data[data_index];
+    
+    /* Fill in identity matrix  */
+    if (data_index % matrix_arg.rdim == data_index / matrix_arg.rdim) {
+      working_result[data_index] = 1;
+    }
+    else {
+      working_result[data_index] = 0;
+    }
+
+    /* Update data index  */
+    data_index += grid_size;
+  }
+
+  /* Sync grid before calculations begin  */
+  grid.sync();
+
+  /* Begin Gauss-Jordan elimination */
+  for (int zero_col = 0; zero_col < matrix_arg.cdim; zero_col++) {
+    int col_offset = matrix_arg.rdim * zero_col;    
+
+    /* Ensure the diagnoal element of this column is not 0, if it is, ERROR  */
+    /* TODO: diagonal elemenent */
+
+    /* Sync all threads after row has been added  */
+    grid.sync();
+
+    /* Divide row of diagonal element by diagonal element */
+    double divisor = working_copy[(zero_col * matrix_arg.rdim) + zero_col];
+    if (grid_index < matrix_arg.cdim) {
+      working_copy[(grid_index * matrix_arg.rdim) + zero_col] /= divisor;
+    }
+    else if (grid_index < 2 * matrix_arg.cdim) {
+      working_result[(grid_index - matrix_arg.cdim) * matrix_arg.rdim + zero_col] /= divisor;
+    }
+    grid.sync();
+
+    /* Save the zeroing column in shared mem in each block  */
+    data_index = thread_index;
+    while (data_index < matrix_arg.rdim) {
+      shared_mem_arr[data_index] = working_copy[(zero_col * matrix_arg.rdim) + data_index];
+      /* CHANGE TO BLOCK SIZE, make grid size and block size __constants__ for each kernel call */
+      data_index += 256;
+    }
+    grid.sync();
+   
+    /* Zero out col using Ri <- Ri - Rj x aij for all i =/= j, with j the zeroing col  */ 
+    data_index = grid_index;
+    for (int i = 0; i < evals_per_thread; i++) {
+      
+      /* Check overflow */
+      if (data_index >= matrix_arg.len) break;
+
+      int col_index = data_index / matrix_arg.rdim;
+      int row_index = data_index % matrix_arg.rdim;
+
+      if (row_index != zero_col) {
+        working_copy[data_index] -= (working_copy[col_index * matrix_arg.rdim + zero_col] *
+                                     shared_mem_arr[row_index]);
+        working_result[data_index] -= (working_result[col_index * matrix_arg.rdim + zero_col] *
+                                       shared_mem_arr[row_index]);
+      }
+
+      data_index += grid_size;
+    }
+    grid.sync();
+  }
+  
+}
+
+
+/*
  * Kernel function ran on the GPU
  */
 
 __global__
-void kernel(int grid_size)
+void kernel(int grid_size, double* scratch_gpu_memory)
 {
   __shared__ double evals[THREADS_PER_BLOCK * MAX_EVALS_PER_THREAD];
   int grid_index = blockDim.x * blockIdx.x + threadIdx.x;
@@ -148,7 +240,7 @@ void call_device() {
   /* Intialize and copy the expr lens into __constant__ memory for faster execution in kernel */
   initialize_expr_lens();
   store_expr_lens();
-  int max_len = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
+  int max_evals = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
 
   /* Calculate the number of evals needed per block and raise error if this exceeds */
   /* the maximum number of evaluations per block that has been pre calculated based */
@@ -158,10 +250,9 @@ void call_device() {
   cudaDeviceProp deviceProp;
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
-  int grid_size = THREADS_PER_BLOCK * deviceProp.multiProcessorCount * BLOCKS_PER_SM;
-  int evals_per_thread = std::ceil((float) max_len / grid_size);
+  int grid_size = deviceProp.multiProcessorCount * BLOCKS_PER_SM * THREADS_PER_BLOCK;
   
-  if (evals_per_thread > MAX_EVALS_PER_THREAD) {
+  if (max_evals > MAX_EVALS_PER_THREAD) {
     printf("Error: Data too large for simultaneous execution on device\n");
     return;
   }
@@ -169,9 +260,14 @@ void call_device() {
     // CHECK HOW EFFICIENT 2 BLOCKS_PER_SM IS WITH SIMILAR SHARED MEMSIZE PER BLOCK
     printf("Launching %d blocks with %d threads per block\n",
            deviceProp.multiProcessorCount * BLOCKS_PER_SM, THREADS_PER_BLOCK);
+    printf("Maximum concurrent evaluation of %d evals per thread\n", 
+           max_evals);
   }
 
-  void* args[] = {&grid_size};
+  scratch_gpu_memory = (double*) malloc_device(max_evals * deviceProp.multiProcessorCount * 
+                                               BLOCKS_PER_SM * THREADS_PER_BLOCK * sizeof(double));
+
+  void* args[] = {&grid_size, &scratch_gpu_memory};
 
   cudaLaunchCooperativeKernel((void*) kernel, deviceProp.multiProcessorCount * BLOCKS_PER_SM, 
                               THREADS_PER_BLOCK, args);
@@ -181,6 +277,7 @@ void call_device() {
 
   /* Clean up memory from intermediate evaluations on GPU */
   free_int_evals();
+  free_device(scratch_gpu_memory);
 }
 
 

@@ -111,8 +111,9 @@ parse_expr_dim <- function(
                 cdim = paste0(parsed_args[2], FIELD_OF, CDIM_TYPE)))
   }
   
-  # Check transpose function
-  if (startsWith(expr_chars, RAW_TRANSPOSE_FUN)) {
+  # Check transpose/inverse function
+  if (startsWith(expr_chars, RAW_TRANSPOSE_FUN) | 
+      startsWith(expr_chars, RAW_INVERSE_FUN)) {
     
     # Identify the matrix argument references, do not allocate additional
     # intermediate evaluations, those are allocated during top level parsing

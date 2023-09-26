@@ -14,6 +14,9 @@ PARSED_MAT_MUL_FUN <- "mat_mul"
 RAW_TRANSPOSE_FUN <- paste0(OPEN_EXPR, "t")
 PARSED_TRANSPOSE_FUN <- "transpose"
 
+RAW_INVERSE_FUN <- paste0(OPEN_EXPR, "solve")
+PARSED_INVERSE_FUN <- "inverse"
+
 RAW_ASSIGN_FUN <- paste0(OPEN_EXPR, "<-")
 PARSED_ASSIGN_FUN <- "="
 
@@ -21,6 +24,9 @@ RAW_FOR_FUN <- paste0(OPEN_EXPR, "for")
 PARSED_FOR_FUN <- "for"
 
 RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
+
+VOID_RET_FUNS <- c("inverse")
+RAW_VOID_RET_FUNS <- paste0(OPEN_EXPR, c("solve"))
 
 LOOP_ITER_VARS <- paste0("i", 0:9)
 
@@ -166,6 +172,12 @@ parse_expr <- function(
   if (startsWith(expr_chars, RAW_TRANSPOSE_FUN)) {
     return(parse_matrix_expr(expr_chars, RAW_TRANSPOSE_FUN, var_names, var_mapping,
                              allocate_intermediate_exprs, PARSED_TRANSPOSE_FUN))
+  }
+  
+  # Check matrix inverse function
+  if (startsWith(expr_chars, RAW_INVERSE_FUN)) {
+    return(parse_matrix_expr(expr_chars, RAW_INVERSE_FUN, var_names, var_mapping,
+                             allocate_intermediate_exprs, PARSED_INVERSE_FUN))
   }
   
   # Check assignment function

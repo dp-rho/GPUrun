@@ -1,3 +1,4 @@
+SCRATCH_MEM <- "scratch_gpu_memory"
 
 #' @title Recursively parse a matrix function call to generate compiled code
 #'
@@ -59,8 +60,24 @@ parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
   additional_lines <- parsed_info$additional_lines
   parsed_args <- parsed_info$parsed_args
 
-  compiled_args <- paste(c(parsed_args, EVAL_DATA_INDEX), collapse = ", ")
-  cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
+  # Check special case where function requires taking the return value
+  # as an argument
+  void_index <- which(startsWith(raw_fun_str, RAW_VOID_RET_FUNS))
+  if (length(void_index) != 0) {
+    # Case by case creation of void return function call with placeholder
+    
+    # Inverse matrix
+    if (RAW_VOID_RET_FUNS[void_index] == RAW_INVERSE_FUN) {
+      compiled_args <- paste(parsed_args[1], SCRATCH_MEM, TEMP_RET,
+                             GRID_ID, TEMP_EVALS, "grid_size", THREAD_ID,
+                             STORE_RESULT, "grid", sep = ", ") 
+      cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
+    }
+  }
+  else {
+    compiled_args <- paste(c(parsed_args, EVAL_DATA_INDEX), collapse = ", ")
+    cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
+  }
   
   return(c(additional_lines, cur_expr))
 }
