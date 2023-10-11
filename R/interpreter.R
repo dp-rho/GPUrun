@@ -63,6 +63,7 @@ interpreter <- function(expr_ls, var_names) {
   # thread to the compiled initialization function in kernel.cu called
   # initialize_expr_lens()
   post_kernel_lines <- write_parsed_dimensions(post_kernel_lines, g_expr_env)
+  post_kernel_lines <- replace_gpu_mem_access(post_kernel_lines, "Expr.lens", "Expr.mem")
 
   # Combine all lines to write to output
   lines_to_write <- c(lines_to_write, post_kernel_lines)

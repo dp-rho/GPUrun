@@ -42,6 +42,11 @@ parse_expr_dim <- function(
     }
   )
   
+  # Base case 3: empty argument
+  if (expr_chars == NULL_ARG) {
+    return(list(len = 0, rdim = 0, cdim = 0))
+  }
+  
   # Assignment operator `<-`
   if (startsWith(expr_chars, RAW_ASSIGN_FUN)) {
     args_start <- nchar(RAW_ASSIGN_FUN) + 2
@@ -53,6 +58,19 @@ parse_expr_dim <- function(
     # and minimize overhead of checking and updating sizes, which is not 
     # generally parallel
     return(parse_expr_dim(args[1], var_names))
+  }
+  
+  # Index function
+  if (startsWith(expr_chars, RAW_INDEX_FUN)) {
+    
+    args_start <- nchar(RAW_ASSIGN_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_dims <- lapply(args[2:length(args)], parse_expr_dim, var_names = var_names)
+    # Case where we take only one argument, i.e., x[1:10]
+    if (length(parsed_dims) == 1) {
+      return(parsed_dims[[1]])
+    }
+    
   }
   
   # Basic elementwise math function
@@ -90,7 +108,7 @@ parse_expr_dim <- function(
     # that initializes intermediate values, but this seems like a 
     # superfluous feature, (X %*% X):y is not particularly useful or common
     parsed_args <- lapply(args, parse_expr, var_names = var_names, index = DEFAULT_INDEX,
-                          allocate_intermediate_exprs = FALSE)
+                          var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
     return(list(len = paste0("std::floor(abs(", parsed_args[2], " - ", parsed_args[1],  ")  + 1)"),
                 rdim = 0, cdim = 0))
   }

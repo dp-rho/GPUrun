@@ -20,6 +20,8 @@ PARSED_INVERSE_FUN <- "inverse"
 RAW_ASSIGN_FUN <- paste0(OPEN_EXPR, "<-")
 PARSED_ASSIGN_FUN <- "="
 
+RAW_INDEX_FUN <- paste0(OPEN_EXPR, "[")
+
 RAW_FOR_FUN <- paste0(OPEN_EXPR, "for")
 PARSED_FOR_FUN <- "for"
 
@@ -110,6 +112,11 @@ parse_expr <- function(
     }
   )
   
+  # Base case 3: empty argument
+  if (expr_chars == NULL_ARG) {
+    return(NULL_ARG)
+  }
+  
   # General case: The form of (fun ...)
   
   # Check basic math functions
@@ -184,7 +191,42 @@ parse_expr <- function(
   if (startsWith(expr_chars, RAW_ASSIGN_FUN)) {
     args_start <- nchar(RAW_ASSIGN_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    
+    # base case assign, entire variable overwritten
     var_index <- which(var_names == args[1])
+    
+    # Special case where we assign to a specific set of indices rather
+    # than the entire variable
+    index_offset_expr <- NULL
+    guard_len_expr <- NULL
+    if (startsWith(args[1], RAW_INDEX_FUN)) {
+      sub_args_start <- nchar(RAW_INDEX_FUN) + 2
+      sub_args <- identify_args(substr(args[1], sub_args_start, nchar(args[1])))
+      
+      # First argument must be a global variable
+      var_index <- which(var_names == sub_args[1])
+      var_struct <- get_ref(var_index, var_mapping = var_mapping)
+      
+      parsed_sub_args <- lapply(sub_args[2:length(sub_args)], parse_expr, 
+                                var_names = var_names, 
+                                var_mapping = var_mapping, index = index, 
+                                allocate_intermediate_exprs = allocate_intermediate_exprs)
+      parsed_sub_args <- unlist(parsed_sub_args)
+      parsed_sub_dims <- lapply(sub_args[2:length(sub_args)], parse_expr_dim, 
+                                var_names = var_names)
+      
+      # Parse the offset expression to access each index in parallel
+      index_offset_expr <- parse_index_expr(parsed_sub_args, parsed_sub_dims, var_struct)
+      guard_len_expr <- parsed_sub_dims[[1]]$len
+      
+      # Parsed dimensions use CPU memory access by default since most dimension
+      # parsing occurs prior to calling the kernel, here we replace any CPU
+      # memory access with GPU memory access as this guard_len_expr will be
+      # evaluated in the kernel call
+      guard_len_expr <- gsub(CPU_MAPPING, GPU_MAPPING, guard_len_expr)
+      guard_len_expr <- gsub(CPU_INTERMEDIATE_EVAL_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING, guard_len_expr)
+    }
+    
     
     # Each thread can evaluate up to 22 indices in the expression, this is limited
     # by the __shared__ memory available to store the results of the evaluations 
@@ -195,8 +237,31 @@ parse_expr <- function(
     additional_lines <- get_additional_lines(list(eval_expr_lines))
     eval_expr <- eval_expr_lines[length(eval_expr_lines)]
     save_dim_info(expr_chars, g_expr_env)
-    assign_lines <- write_assign_loop(var_index, eval_expr)
+    assign_lines <- write_assign_loop(var_index, eval_expr, guard_len_expr = guard_len_expr,
+                                      index_offset_expr = index_offset_expr)
     return(c(additional_lines, assign_lines))
+  }
+  
+  # Index function (on evaluation, since assignment index expressions
+  # are caught in the assignment parsing case)
+  if (startsWith(expr_chars, RAW_INDEX_FUN)) {
+    args_start <- nchar(RAW_INDEX_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_args <- lapply(args[2:length(args)], parse_expr, var_names=var_names, depth=depth,
+                          var_mapping=var_mapping,
+                          index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
+    parsed_args <- unlist(parsed_args)
+    parsed_dims <- lapply(args, parse_expr_dim, var_names = var_names) 
+    parsed_dims <- unlist(parsed_dims)
+    
+    # First argument must be a global variable
+    var_index <- which(var_names == args[1])
+    var_struct <- get_ref(var_index, var_mapping = var_mapping)
+    
+    # Parse the offset expression to access each index in parallel
+    index_offset_expr <- parse_index_expr(unlist(parsed_args), unlist(parsed_dim))
+  
+    return(paste0(var_struct, ".data[", index_offset_expr, "]"))
   }
   
   # Check multiple run function (i.e. '{')

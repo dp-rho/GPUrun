@@ -212,6 +212,7 @@ void kernel(int grid_size, double* scratch_gpu_memory)
   int thread_index = threadIdx.x;
   int _shared_mem_index = 0;
   int _eval_data_index = 0;
+  int _guard_len = 0;
   cooperative_groups::grid_group grid = cooperative_groups::this_grid();
 
   // [[Kernel::start]]
@@ -229,15 +230,15 @@ void call_device() {
   /* Copy the Rvars into __constant__ memory for faster execution in kernel */
   store_vars();
 
-  /* Initialize and copy the intermediate evaluation variables  */
+  /* Initialize and copy intermediate evaluation variables  */
   initialize_int_evals();
   store_int_evals();
   
-  /* Intialize and copy the iter lens into __constant__ memory for faster execution in kernel */
+  /* Intialize and copy iter lens into __constant__ memory for faster execution in kernel */
   initialize_iter_lens();
   store_iter_lens();
 
-  /* Intialize and copy the expr lens into __constant__ memory for faster execution in kernel */
+  /* Intialize and copy expr lens into __constant__ memory for faster execution in kernel */
   initialize_expr_lens();
   store_expr_lens();
   int max_evals = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
@@ -251,7 +252,7 @@ void call_device() {
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
   int grid_size = deviceProp.multiProcessorCount * BLOCKS_PER_SM * THREADS_PER_BLOCK;
-  
+
   if (max_evals > MAX_EVALS_PER_THREAD) {
     printf("Error: Data too large for simultaneous execution on device\n");
     return;
@@ -312,10 +313,11 @@ void initialize_expr_lens() {
   cudaGetDeviceProperties(&deviceProp, dev);
   int grid_size = THREADS_PER_BLOCK * deviceProp.multiProcessorCount * BLOCKS_PER_SM;
   int expr_len = 0;
+  double access_mem[MAX_EXPRS];
 
-  /* The code below is updated by R code with expressions that are evaluated  */
-  /* at each execution of the compiled commands to get the expression length  */
-  /* of each included expression                                              */
+  // [[Expr.mem::start]]
+  /* Copy any memory accesses needed from GPU memory to CPU memory  */
+  // [[Expr.mem::end]]
 
   // [[Expr.lens::start]]
   expr_len = /* parsed expr len */;

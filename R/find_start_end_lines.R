@@ -25,7 +25,8 @@ OTHER_FLAG <- 0
 #' find_start_end_lines("Kernel")
 find_start_end_lines <- function(
     text_lines, 
-    flag_str = c("Kernel", "Iter.lens","Expr.lens", "Int.evals")
+    flag_str = c("Kernel", "Iter.lens","Expr.lens", "Int.evals",
+                 "Iter.mem", "Expr.mem", "Int.mem")
 ) {
   
   # Match args

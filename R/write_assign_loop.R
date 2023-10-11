@@ -4,6 +4,7 @@ EVALS_PER_THREAD <- "gpu_evals_per_thread"
 SHARED_MEM_INDEX <- "_shared_mem_index"
 EVAL_DATA_INDEX <- "_eval_data_index"
 EVAL_LOOP_INDEX <- "_eval_index"
+GUARD_LEN <- "_guard_len"
 
 TEMP_RET <- "//[[RET::VAL]]"
 TEMP_EVALS <- "//[[TEMP::EVALS]]"
@@ -30,9 +31,11 @@ TEMP_EVALS <- "//[[TEMP::EVALS]]"
 #' write_assign_loop(var_index, eval_expr)
 write_assign_loop <- function(
     var_index, 
-    eval_expr, 
+    eval_expr,
     var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
-                    CPU_INTERMEDIATE_EVAL_MAPPING)
+                    CPU_INTERMEDIATE_EVAL_MAPPING),
+    guard_len_expr = NULL,
+    index_offset_expr = NULL
 ) {
   # Match args
   var_mapping <- match.arg(var_mapping)
@@ -61,6 +64,11 @@ write_assign_loop <- function(
   # The Rvar structure that will have its data field updated at the unique
   # data evaluation index determined by the block, thread, and evaluation loop
   update_results <- paste0(var_ref, ".data[", EVAL_DATA_INDEX, "]")
+  
+  # Special case to use the index offset expression (already parsed) instead
+  if (!is.null(index_offset_expr)) {
+    update_results <- paste0(var_ref, ".data[", index_offset_expr, "]")
+  }
   
   # initialize the index that will iterate over the __shared__ memory array,
   # this is initialized as the thread index (from 0 - 255) of the current block
@@ -97,18 +105,26 @@ write_assign_loop <- function(
                                         update_shared_index)), ";"),
                   "}")
   
-
+  # Initialize the guard_len variable used to control overflow
+  init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, var_len, ";")
+  
+  # Special case where an index assignment uses an already parsed expression
+  if (!is.null(guard_len_expr)) {
+    init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, guard_len_expr, ";")
+  }
+  
   # To avoid memory errors, do not assign values past the selected Rvar's len
-  assignment_len_guard <- paste0("if (", EVAL_DATA_INDEX, " >= ", var_len, ") break")
+  assignment_len_guard <- paste0("if (", EVAL_DATA_INDEX, " >= ", GUARD_LEN, ") break")
   
   # Update the global Rvar structure with a value from the __shared__ memory 
   update_command <- paste(update_results, PARSED_ASSIGN_FUN, store_results)
   
   # Create the code for the loop that updates the global Rvar using the values
   # stored in the __shared__memory array
-  update_loop <- c(initialize_shared_mem_index, start_loop,
+  update_loop <- c(initialize_shared_mem_index, init_guard_len,
+                   start_loop,
                    paste0(indent_lines(c(update_data_index, 
-                                         assignment_len_guard,
+                                         assignment_len_guard, 
                                          update_command, 
                                          update_shared_index)), ";"),
                    "}")

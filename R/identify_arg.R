@@ -1,6 +1,7 @@
 OPEN_EXPR <- "("
 CLOSE_EXPR <- ")"
 DELIM <- " "
+IS_NULL_ARG <- -1
 
 #' @title Identify the next argument in a racket like R expression
 #' 
@@ -31,7 +32,10 @@ identify_arg <- function(expr_chars) {
     }
     else if (char_at == CLOSE_EXPR) {
       if (open_count == 0) {
-        return(index - 1)
+        if (index != 1) {
+          return(index - 1)
+        }
+        else return(IS_NULL_ARG)
       }
       open_count <- open_count - 1
     }
