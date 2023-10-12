@@ -288,10 +288,17 @@ void call_device() {
  */
 
 void initialize_iter_lens() {
-
+  
+  double access_mem[MAX_ITERS];
+  
   /* The code below is updated by R code with expressions that are evaluated  */
   /* at each execution of the compiled commands to get the iteration length   */
   /* of each included loop                                                    */
+
+  // [[Iter.mem::start]]
+  /* Copy any memory accesses needed from GPU memory to CPU memory  */
+  // [[Iter.mem::end]]
+
 
   // [[Iter.lens::start]]
   g_iter_lens[/*x*/] = /* parsed expr len */
@@ -334,6 +341,13 @@ void initialize_expr_lens() {
 
 void initialize_int_evals() {
   
+  double access_mem[MAX_INT_VARS];
+
+  // [[Int.mem::start]]
+  /* Copy any memory accesses needed from GPU memory to CPU memory  */
+  // [[Int.mem::end]]
+
+
   /* Used to intitialize len and data fields  */
   int len = 0;  
 

@@ -21,18 +21,19 @@ replace_gpu_mem_access <- function(
   # with local CPU memory access, called access_mem[i], with i starting at 0 
   # and increasing to the total number of unique memory access expressions
   
-  # Define a local recursive function
+  # Define a local recursive function to replace host memory accesses with
+  # local device accessible memory and store the necessary information to then
+  # copy that device memory into the host memory prior to evaluation of exprs
   parse_access_info <- function(expr_chars) {
     
     # The string pattern that determines if a memory access exists
     mem_access_pattern <- "([a-z_]+?)\\[(\\d+)\\].data\\[(.*)"
     
-    # If there is no nested memory access expressions, read up to first "]"
+    # If there is no nested memory access expressions, return string
     if (!(grepl(mem_access_pattern, expr_chars))) {
       return(expr_chars)
     }
     else {
-      # browser()
       match_result <- stringr::str_match(expr_chars, mem_access_pattern)
       mapping <- match_result[1, 2]
       var_index <- match_result[1, 3]
@@ -70,22 +71,31 @@ replace_gpu_mem_access <- function(
   
   # Replace the dimension expression lines with updated memory accesses
   replaced_lines <- c()
-  for (line in compiled_code_lines[line_indices$start:line_indices$end]) {
+  for (line in compiled_code_lines[(line_indices$start + 1):(line_indices$end - 1)]) {
     replaced_lines <- append(replaced_lines, parse_access_info(line))
   }
-  compiled_code_lines[line_indices$start:line_indices$end] <- replaced_lines
+  compiled_code_lines <- c(compiled_code_lines[1:line_indices$start],
+                           replaced_lines,
+                           compiled_code_lines[line_indices$end:length(compiled_code_lines)])
   
-  # initialize the new memory accesses
+  # Initialize the new memory accesses
   copy_mem_lines <- find_start_end_lines(compiled_code_lines, mem_flag_str)
   init_lines <- c()
-  for (index in 1:length(access_env$mem_accesses)) {
-    mem_info <- access_env$mem_accesses[[index]]
-    host_mem <- paste("access_mem", "+", index - 1)
-    device_mem <- paste0(mem_info$mapping, "[", mem_info$var_index, "].data + ", mem_info$parsed_index_expr)
-    mem_init_line <- paste0("memcpy_to_host(", host_mem, ", ", device_mem, ", sizeof(double))")
-    init_lines <- append(init_lines, mem_init_line)
+  # browser()
+  if (length(access_env$mem_accesses)) {
+    for (index in 1:length(access_env$mem_accesses)) {
+      mem_info <- access_env$mem_accesses[[index]]
+      host_mem <- paste("access_mem", "+", index - 1)
+      device_mem <- paste0(mem_info$mapping, "[", mem_info$var_index, "].data + ", mem_info$parsed_index_expr)
+      mem_init_line <- paste0("memcpy_to_host(", host_mem, ", ", device_mem, ", sizeof(double))")
+      init_lines <- append(init_lines, mem_init_line)
+    }
   }
   
+  # Insert newly created device to host memory access lines, these must be
+  # executed prior to the evaluation of the dimensions as the dimension
+  # expressions now use the local host memory access_mem[x] to read
+  # data values from the global variables that are only readable on device
   inserted_lines <- c(compiled_code_lines[1:copy_mem_lines$start],
                       indent_lines(paste0(init_lines, ";")),
                       compiled_code_lines[copy_mem_lines$end:length(compiled_code_lines)])

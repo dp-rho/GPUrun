@@ -113,6 +113,22 @@ parse_expr_dim <- function(
                 rdim = 0, cdim = 0))
   }
   
+  # Check for paren function, i.e., '('
+  if (startsWith(expr_chars, RAW_PAREN_FUN)) {
+    args_start <- nchar(RAW_PAREN_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_arg <- parse_expr_dim(args[1], var_names=var_names)
+    return(parsed_arg)
+  }
+  
+  # Check vectorized ifelse function
+  if (startsWith(expr_chars, RAW_IFELSE_FUN)) {
+    args_start <- nchar(RAW_IFELSE_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_arg <- parse_expr_dim(args[1], var_names=var_names)
+    return(parsed_arg)
+  }
+  
   # Check matrix multiplication function
   if (startsWith(expr_chars, RAW_MAT_MUL_FUN)) {
     

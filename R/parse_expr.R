@@ -8,6 +8,10 @@ PARSED_MATH_FUNS <- c("add", "sub", "mul", "dvs")
 RAW_RANGE_FUN <- paste0(OPEN_EXPR, ":")
 PARSED_RANGE_FUN <- "range"
 
+RAW_PAREN_FUN <- paste0(OPEN_EXPR, "par")
+
+RAW_IFELSE_FUN <- paste0(OPEN_EXPR, "ifelse")
+
 RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
 PARSED_MAT_MUL_FUN <- "mat_mul"
 
@@ -148,8 +152,8 @@ parse_expr <- function(
     
     # General case of the form op(arg1, arg2) where op is some element wise math
     additional_lines <- get_additional_lines(parsed_args)
-    parsed_num1 <- parsed_args[1][length(parsed_args[1])]
-    parsed_num2 <- parsed_args[2][length(parsed_args[2])]
+    parsed_num1 <- parsed_args[[1]][length(parsed_args[[1]])]
+    parsed_num2 <- parsed_args[[2]][length(parsed_args[[2]])]
     cur_expr <- paste0(PARSED_MATH_FUNS[math_index], "(", parsed_num1,
                        ", ", parsed_num2, ")")
     return(c(additional_lines, cur_expr))
@@ -232,12 +236,12 @@ parse_expr <- function(
     # by the __shared__ memory available to store the results of the evaluations 
     # before writing them to global memory associated with the first argument
     # of this expression
-    eval_expr_lines <- parse_expr(args[2], var_names, depth = depth,
-                                  allocate_intermediate_exprs = allocate_intermediate_exprs)
+    eval_expr_lines <- parse_expr(args[2], var_names, depth=depth, var_mapping=var_mapping,
+                                  allocate_intermediate_exprs=allocate_intermediate_exprs)
     additional_lines <- get_additional_lines(list(eval_expr_lines))
     eval_expr <- eval_expr_lines[length(eval_expr_lines)]
     save_dim_info(expr_chars, g_expr_env)
-    assign_lines <- write_assign_loop(var_index, eval_expr, guard_len_expr = guard_len_expr,
+    assign_lines <- write_assign_loop(var_index, eval_expr, guard_len_expr=guard_len_expr,
                                       index_offset_expr = index_offset_expr)
     return(c(additional_lines, assign_lines))
   }
@@ -250,6 +254,7 @@ parse_expr <- function(
     parsed_args <- lapply(args[2:length(args)], parse_expr, var_names=var_names, depth=depth,
                           var_mapping=var_mapping,
                           index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
+    
     parsed_args <- unlist(parsed_args)
     parsed_dims <- lapply(args, parse_expr_dim, var_names = var_names) 
     parsed_dims <- unlist(parsed_dims)
@@ -268,15 +273,43 @@ parse_expr <- function(
   if (startsWith(expr_chars, RAW_MULTI_EXPR_FUN)) {
     args_start <- nchar(RAW_MULTI_EXPR_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names = var_names, depth = depth,
-                          index = index, allocate_intermediate_exprs = allocate_intermediate_exprs)
+    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth, var_mapping=var_mapping,
+                          index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
     
     # If there are multiple arguments to run, sync after each command executed
     if (length(parsed_args) > 1) {
-      parsed_args <- c(lapply(parsed_args[1:(length(parsed_args) - 1)], append, values = SYNC_GRID),
+      parsed_args <- c(lapply(parsed_args[1:(length(parsed_args) - 1)], append, values=SYNC_GRID),
                        parsed_args[length(parsed_args)])
     }
     return(unlist(parsed_args, recursive = FALSE, use.names = FALSE))
+  }
+  
+  # Check for paren function, i.e., '('
+  if (startsWith(expr_chars, RAW_PAREN_FUN)) {
+    args_start <- nchar(RAW_PAREN_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    eval_expr_lines <- parse_expr(args[1], var_names, depth=depth, var_mapping=var_mapping,
+                                  allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- get_additional_lines(list(eval_expr_lines))
+    cur_line <- paste0("(", eval_expr_lines[length(eval_expr_lines)], ")")
+    appended_lines <- c(additional_lines, cur_line)
+    return(appended_lines)
+  }
+  
+  # Check vectorized ifelse function
+  if (startsWith(expr_chars, RAW_IFELSE_FUN)) {
+    args_start <- nchar(RAW_IFELSE_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    eval_expr_lines <- lapply(args, parse_expr, var_names=var_names, depth=depth, var_mapping=var_mapping,
+                          index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
+    
+    additional_lines <- get_additional_lines(eval_expr_lines)
+    condition <- eval_expr_lines[[1]][length(eval_expr_lines[[1]])]
+    t_result <- eval_expr_lines[[2]][length(eval_expr_lines[[2]])]
+    f_result <- eval_expr_lines[[3]][length(eval_expr_lines[[3]])]
+    cur_expr <- paste0(condition, " ? ", t_result, " : ", f_result)
+    appended_lines <- c(additional_lines, cur_expr)
+    return(appended_lines)
   }
   
   # Check for loop function
