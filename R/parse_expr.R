@@ -186,7 +186,7 @@ parse_expr <- function(
                           index="DEFAULT_DATA_INDEX", 
                           allocate_intermediate_exprs=allocate_intermediate_exprs)
 
-    additional_lines <- get_additional_lines(append(list(parsed_args), dim_exprs))
+    additional_lines <- get_additional_lines(append(list(expr_to_use), dim_exprs))
     cur_expr <- expr_to_use[length(expr_to_use)]
 
     # NOTE: Void return functions (currently only matrix inverse) will not work by simply
