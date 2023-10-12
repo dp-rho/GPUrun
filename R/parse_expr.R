@@ -12,6 +12,8 @@ RAW_PAREN_FUN <- paste0(OPEN_EXPR, "par")
 
 RAW_IFELSE_FUN <- paste0(OPEN_EXPR, "ifelse")
 
+RAW_MAT_FUN <- paste0(OPEN_EXPR, "matrix")
+
 RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
 PARSED_MAT_MUL_FUN <- "mat_mul"
 
@@ -171,6 +173,12 @@ parse_expr <- function(
     stop <- parsed_args[[2]][length(parsed_args[[2]])]
     cur_expr <- paste0(PARSED_RANGE_FUN, "(", start, ", ", stop, ", ", index, ")")
     return(c(additional_lines, cur_expr))
+  }
+
+  # Check matrix dimension function
+  if (startsWith(expr_chars, RAW_MAT_FUN)) {
+    return(parse_matrix_expr(expr_chars, RAW_MAT_FUN, var_names, var_mapping,
+                             allocate_intermediate_exprs, RAW_MAT_FUN))
   }
   
   # Check matrix multiplication function
