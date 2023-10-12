@@ -128,6 +128,16 @@ parse_expr_dim <- function(
     parsed_arg <- parse_expr_dim(args[1], var_names=var_names)
     return(parsed_arg)
   }
+
+  # Check matrix dimension function
+  if (startsWith(expr_chars, RAW_MAT_FUN)) {
+    args_start <- nchar(RAW_MAT_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_args <- lapply(args, parse_expr, var_names = var_names, index = DEFAULT_INDEX,
+                          var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    return(list(len = paste0(parsed_args[1], " * ", parsed_args[2]),
+                rdim = parsed_args[1], cdim = parsed_args[2]))
+  }
   
   # Check matrix multiplication function
   if (startsWith(expr_chars, RAW_MAT_MUL_FUN)) {
