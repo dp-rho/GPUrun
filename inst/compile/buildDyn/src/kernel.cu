@@ -67,15 +67,6 @@ __device__ double range(double arg1, double arg2, int data_index) {
 
 
 /*
- * Matrix dimension specification, dummy function
- */
-
-__device__ double mat(double arg, int nrow, int ncol) {
-  return arg;
-}
-
-
-/*
  * Matrix multiplication, implementation is naive with no use of shared memory
  */
 
