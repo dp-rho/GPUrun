@@ -63,13 +63,15 @@ parse_expr_dim <- function(
   # Index function
   if (startsWith(expr_chars, RAW_INDEX_FUN)) {
     
-    args_start <- nchar(RAW_ASSIGN_FUN) + 2
+    args_start <- nchar(RAW_INDEX_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     parsed_dims <- lapply(args[2:length(args)], parse_expr_dim, var_names = var_names)
     # Case where we take only one argument, i.e., x[1:10]
     if (length(parsed_dims) == 1) {
       return(parsed_dims[[1]])
     }
+
+    # TODO: implement 2D parsing
     
   }
   
@@ -133,10 +135,10 @@ parse_expr_dim <- function(
   if (startsWith(expr_chars, RAW_MAT_FUN)) {
     args_start <- nchar(RAW_MAT_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names = var_names, index = DEFAULT_INDEX,
+    parsed_args <- lapply(args[2:length(args)], parse_expr, var_names = var_names, index = DEFAULT_INDEX,
                           var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
-    return(list(len = paste0(parsed_args[1], " * ", parsed_args[2]),
-                rdim = parsed_args[1], cdim = parsed_args[2]))
+    return(list(len=paste0(parsed_args[1], " * ", parsed_args[2]),
+                rdim=parsed_args[1], cdim=parsed_args[2]))
   }
   
   # Check matrix multiplication function
