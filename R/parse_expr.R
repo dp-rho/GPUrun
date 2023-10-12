@@ -102,12 +102,12 @@ parse_expr <- function(
     
     # Evaluation dependent only on a single index of data
     if (type == "data"){
-      return(translate_variable(var_index, index = index, var_mapping = var_mapping))
+      return(translate_variable(var_index, index=index, var_mapping=var_mapping))
     }
     
     # Evaluation dependent on the entire Rvar structure
     else {
-      return(get_ref(var_index, var_mapping = var_mapping))
+      return(get_ref(var_index, var_mapping=var_mapping))
     }
   }
   
@@ -165,9 +165,9 @@ parse_expr <- function(
   if (startsWith(expr_chars, RAW_RANGE_FUN)) {
     args_start <- nchar(RAW_RANGE_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names = var_names, depth = depth,
-                          index = "DEFAULT_DATA_INDEX", 
-                          allocate_intermediate_exprs = allocate_intermediate_exprs)
+    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth,
+                          index="DEFAULT_DATA_INDEX", 
+                          allocate_intermediate_exprs=allocate_intermediate_exprs)
     additional_lines <- get_additional_lines(parsed_args)
     start <- parsed_args[[1]][length(parsed_args[[1]])]
     stop <- parsed_args[[2]][length(parsed_args[[2]])]
@@ -177,8 +177,24 @@ parse_expr <- function(
 
   # Check matrix dimension function
   if (startsWith(expr_chars, RAW_MAT_FUN)) {
-    return(parse_matrix_expr(expr_chars, RAW_MAT_FUN, var_names, var_mapping,
-                             allocate_intermediate_exprs, RAW_MAT_FUN))
+    args_start <- nchar(RAW_RANGE_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    expr_to_use <- parse_expr(args[1], var_names=var_names, depth=depth,
+                              index=index, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    dim_exprs <- lapply(args[2:length(args)], parse_expr, var_names=var_names, depth=depth,
+                          index="DEFAULT_DATA_INDEX", 
+                          allocate_intermediate_exprs=allocate_intermediate_exprs)
+
+    additional_lines <- get_additional_lines(append(list(parsed_args), dim_exprs))
+    cur_expr <- expr_to_use[length(expr_to_use)]
+
+    # NOTE: Void return functions (currently only matrix inverse) will not work by simply
+    # returning the parsed expression for argument 1, as the void return functions do not
+    # directly return a value, rather they write the calculated values to a provided 
+    # memory address passed to the compiled function
+      
+    return(c(additional_lines, cur_expr))
   }
   
   # Check matrix multiplication function
