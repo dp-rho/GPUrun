@@ -40,7 +40,7 @@ WRITE_FUNS <- list(
   ) {
     save_len <- paste0("expr_len = ", expr_to_write, ";")
     update_evals <- paste0("g_evals_per_thread[", index_to_write - 1, "] = ",
-                           "std::ceil((float) expr_len / grid_size);")
+                           "ceil((float) expr_len / grid_size);")
     return(c(save_len, update_evals))
   },
   

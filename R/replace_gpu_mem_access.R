@@ -72,10 +72,13 @@ replace_gpu_mem_access <- function(
   # Replace the dimension expression lines with updated memory accesses
   replaced_lines <- c()
   for (line in compiled_code_lines[(line_indices$start + 1):(line_indices$end - 1)]) {
-    replaced_lines <- append(replaced_lines, parse_access_info(line))
+    while(grepl("([a-z_]+?)\\[(\\d+)\\].data\\[(.*)", line)) {
+      line <- parse_access_info(line)
+    }
+    replaced_lines <- append(replaced_lines, line)
   }
   compiled_code_lines <- c(compiled_code_lines[1:line_indices$start],
-                           replaced_lines,
+                           set_mem_type(replaced_lines, "cpu"),
                            compiled_code_lines[line_indices$end:length(compiled_code_lines)])
   
   # Initialize the new memory accesses
@@ -88,7 +91,7 @@ replace_gpu_mem_access <- function(
       host_mem <- paste("access_mem", "+", index - 1)
       device_mem <- paste0(mem_info$mapping, "[", mem_info$var_index, "].data + ", mem_info$parsed_index_expr)
       mem_init_line <- paste0("memcpy_to_host(", host_mem, ", ", device_mem, ", sizeof(double))")
-      init_lines <- append(init_lines, mem_init_line)
+      init_lines <- append(init_lines, set_mem_type(mem_init_line, "cpu"))
     }
   }
   

@@ -41,7 +41,7 @@ get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
   args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
   parsed_args <- c()
   additional_lines <- c()
-  
+
   for (i in seq_along(args)) {
     
     # If the argument exists as a global Rvar, get reference from global

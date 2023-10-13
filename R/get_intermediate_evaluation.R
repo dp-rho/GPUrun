@@ -21,7 +21,7 @@ get_intermediate_evaluation <- function(
     arg, 
     var_names
 ) {
-  
+
   # If argument is a global variable, we do not need to evaluate it in an 
   # intermediate step, the data will be directly read from a global Rvar
   if (arg %in% var_names) return(NULL)

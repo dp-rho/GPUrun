@@ -23,16 +23,15 @@ double* scratch_gpu_memory;
  * Basic addition
  */
 
-__device__ double add(double arg1, double arg2) {
+__host__ __device__ double add(double arg1, double arg2) {
   return arg1 + arg2;
 }
-
 
 /*
  * Basic subtraction
  */
 
-__device__ double sub(double arg1, double arg2) {
+__host__ __device__ double sub(double arg1, double arg2) {
   return arg1 - arg2;
 }
 
@@ -41,7 +40,7 @@ __device__ double sub(double arg1, double arg2) {
  * Basic multiplication
  */
 
-__device__ double mul(double arg1, double arg2) {
+__host__ __device__ double mul(double arg1, double arg2) {
   return arg1 * arg2;
 }
 
@@ -50,7 +49,7 @@ __device__ double mul(double arg1, double arg2) {
  * Basice division
  */
 
-__device__ double dvs(double arg1, double arg2) {
+__host__ __device__ double dvs(double arg1, double arg2) {
   return arg1 / arg2;
 }
 
@@ -59,9 +58,9 @@ __device__ double dvs(double arg1, double arg2) {
  * Range operator, i.e., from 1:10, return 1, 2, 3, ...
  */
 
-__device__ double range(double arg1, double arg2, int data_index) {
+__host__ __device__ double range(double arg1, double arg2, int data_index) {
   int sign = (arg2 > arg1) ? 1 : -1;
-  int len = std::floor(abs(arg2 - arg1) + 1);
+  int len = floor(abs(arg2 - arg1) + 1);
   return arg1 + (sign * (data_index % len));
 }
 
@@ -117,9 +116,11 @@ __device__ double transpose(Rvar arg, int data_index) {
  * updates values in the pointer argument working_result
  */
 
-__device__ void inverse(Rvar matrix_arg, double* working_copy, double* working_result,
-                        int grid_index, int evals_per_thread, int grid_size, int thread_index,
-                        double* shared_mem_arr, cooperative_groups::grid_group grid) {
+__device__ void inverse(Rvar matrix_arg, double* working_copy, 
+                                 double* working_result,
+                                 int grid_index, int evals_per_thread, int grid_size, 
+                                 int thread_index, double* shared_mem_arr, 
+                                 cooperative_groups::grid_group grid) {
 
   /* Copy in matrix arg to the working copy, set working_result to identity matrix  */
   int data_index = grid_index;
@@ -328,10 +329,11 @@ void initialize_expr_lens() {
 
   // [[Expr.lens::start]]
   expr_len = /* parsed expr len */;
-  g_evals_per_thread[/*x*/] = std::ceil((float) expr_len / grid_size);
+  g_evals_per_thread[/*x*/] = ceil((float) expr_len / grid_size);
   g_expr_count = /* R::g_expr_count */;
   // [[Expr.lens::end]]
-}
+
+  }
 
 
 /*

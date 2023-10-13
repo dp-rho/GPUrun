@@ -44,7 +44,7 @@ write_assign_loop <- function(
   # determines how many evaluations are needed in each thread
   var_ref <- get_ref(var_index, var_mapping =  var_mapping)
   var_len <- paste0(var_ref, ".len")
-  
+
   # Special case where the function being assigned directly handles
   # the assignment to target memory
   void_index <- which(startsWith(eval_expr, VOID_RET_FUNS))

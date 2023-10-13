@@ -42,7 +42,7 @@ SCRATCH_MEM <- "scratch_gpu_memory"
 #'                   allocate_intermediate_exprs, parsed_fun_str)
 parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
                               allocate_intermediate_exprs, parsed_fun_str) {
-  
+
   # If the expression is being parsed to identify lengths or dimensions
   # and not to write the kernel, return the intermediate evaluation
   # Rvar structure with memory access available on either GPU or CPU
@@ -59,7 +59,7 @@ parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
                                      allocate_intermediate_exprs = allocate_intermediate_exprs)
   additional_lines <- parsed_info$additional_lines
   parsed_args <- parsed_info$parsed_args
-
+  
   # Check special case where function requires taking the return value
   # as an argument
   void_index <- which(startsWith(raw_fun_str, RAW_VOID_RET_FUNS))

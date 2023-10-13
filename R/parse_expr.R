@@ -177,7 +177,7 @@ parse_expr <- function(
 
   # Check matrix dimension function
   if (startsWith(expr_chars, RAW_MAT_FUN)) {
-    args_start <- nchar(RAW_RANGE_FUN) + 2
+    args_start <- nchar(RAW_MAT_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     expr_to_use <- parse_expr(args[1], var_names=var_names, depth=depth,
                               index=index, 
@@ -243,19 +243,15 @@ parse_expr <- function(
       additional_lines <- get_additional_lines(parsed_sub_args)
       cur_sub_args <- lapply(parsed_sub_args, function(vec) { vec[length(vec)] })
       cur_sub_args <- unlist(cur_sub_args)
-      parsed_sub_dims <- lapply(sub_args[2:length(sub_args)], parse_expr_dim, 
+      parsed_sub_dims <- lapply(sub_args, parse_expr_dim, 
                                 var_names = var_names)
       
       # Parse the offset expression to access each index in parallel
-      index_offset_expr <- parse_index_expr(cur_sub_args, parsed_sub_dims, var_struct)
-      guard_len_expr <- parsed_sub_dims[[1]]$len
-      
-      # Parsed dimensions use CPU memory access by default since most dimension
-      # parsing occurs prior to calling the kernel, here we replace any CPU
-      # memory access with GPU memory access as this guard_len_expr will be
-      # evaluated in the kernel call
-      guard_len_expr <- gsub(CPU_MAPPING, GPU_MAPPING, guard_len_expr)
-      guard_len_expr <- gsub(CPU_INTERMEDIATE_EVAL_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING, guard_len_expr)
+      index_offset_expr <- parse_index_expr(cur_sub_args, 
+                                            parsed_sub_dims, 
+                                            var_struct)
+      guard_len_expr <- set_mem_type(parse_expr_dim(args[1], var_names)$len,
+                                     "gpu")
     }
     
     
@@ -263,7 +259,9 @@ parse_expr <- function(
     # by the __shared__ memory available to store the results of the evaluations 
     # before writing them to global memory associated with the first argument
     # of this expression
-    eval_expr_lines <- parse_expr(args[2], var_names, depth=depth, var_mapping=var_mapping,
+
+    eval_expr_lines <- parse_expr(args[2], var_names, depth=depth, 
+                                  index=index, var_mapping=var_mapping,
                                   allocate_intermediate_exprs=allocate_intermediate_exprs)
     additional_lines <- c(get_additional_lines(list(eval_expr_lines)),
                           additional_lines)
@@ -287,15 +285,14 @@ parse_expr <- function(
     cur_args <- lapply(parsed_args, function(vec) { vec[length(vec)] })
     cur_args <- unlist(cur_args)
     parsed_dims <- lapply(args, parse_expr_dim, var_names = var_names) 
-    parsed_dims <- unlist(parsed_dims)
     
     # First argument must be a global variable
     var_index <- which(var_names == args[1])
     var_struct <- get_ref(var_index, var_mapping = var_mapping)
     
     # Parse the offset expression to access each index in parallel
-    index_offset_expr <- parse_index_expr(unlist(cur_args), unlist(parsed_dim))
-
+    index_offset_expr <- parse_index_expr(cur_args, parsed_dims, var_struct)
+    
     # The current expression is created with the parsed index offset and the identified Rvar
     cur_expr <- paste0(var_struct, ".data[", index_offset_expr, "]")
 
@@ -321,7 +318,8 @@ parse_expr <- function(
   if (startsWith(expr_chars, RAW_PAREN_FUN)) {
     args_start <- nchar(RAW_PAREN_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    eval_expr_lines <- parse_expr(args[1], var_names, depth=depth, var_mapping=var_mapping,
+    eval_expr_lines <- parse_expr(args[1], var_names, depth=depth, index=index,
+                                  var_mapping=var_mapping,
                                   allocate_intermediate_exprs=allocate_intermediate_exprs)
     additional_lines <- get_additional_lines(list(eval_expr_lines))
     cur_line <- paste0("(", eval_expr_lines[length(eval_expr_lines)], ")")

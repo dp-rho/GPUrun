@@ -65,14 +65,33 @@ parse_expr_dim <- function(
     
     args_start <- nchar(RAW_INDEX_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_dims <- lapply(args[2:length(args)], parse_expr_dim, var_names = var_names)
-    # Case where we take only one argument, i.e., x[1:10]
-    if (length(parsed_dims) == 1) {
-      return(parsed_dims[[1]])
-    }
+    parsed_dims <- lapply(args, parse_expr_dim, var_names = var_names)
 
-    # TODO: implement 2D parsing
+    # Case where we take only one index argument, i.e., x[1:10]
+    if (length(parsed_dims) == 2) {
+      return(list(len=parsed_dims[[2]]$len, rdim=0, cdim=0))
+    }
     
+    # Case where the first argument is empty, i.e., X[,3:4]
+    else if (parsed_dims[[2]]$len == 0) {
+       return(list(len=paste(parsed_dims[[1]]$rdim, "*", parsed_dims[[3]]$len), 
+                   rdim=parsed_dims[[1]]$rdim,
+                   cdim=parsed_dims[[3]]$len))
+    }
+    
+    # Case where the second argument is empty, i.e., X[3:4,]
+    else if (parsed_dims[[3]]$len == 0) {
+      return(list(len=paste(parsed_dims[[1]]$cdim, "*", parsed_dims[[2]]$len), 
+                  rdim=parsed_dims[[2]]$len,
+                  cdim=parsed_dims[[1]]$cdim))
+    }
+    
+    # General case, i.e., X[3:4,5:7]
+    else{
+      return(list(len=paste(parsed_dims[[2]]$len, "*", parsed_dims[[3]]$len), 
+                  rdim=parsed_dims[[2]]$len,
+                  cdim=parsed_dims[[3]]$len))
+    }
   }
   
   # Basic elementwise math function
@@ -91,7 +110,7 @@ parse_expr_dim <- function(
 
     # The dimension of an elementwise math function is always the max of the 
     # arguments' dimensions
-    dims <- lapply(DIMS, function(dim_type) {paste0("std::max(", parsed_args[[1]][[dim_type]], 
+    dims <- lapply(DIMS, function(dim_type) {paste0("max(", parsed_args[[1]][[dim_type]], 
                                              ", ", parsed_args[[2]][[dim_type]], ")")})
     names(dims) <- DIMS
     
@@ -111,7 +130,7 @@ parse_expr_dim <- function(
     # superfluous feature, (X %*% X):y is not particularly useful or common
     parsed_args <- lapply(args, parse_expr, var_names = var_names, index = DEFAULT_INDEX,
                           var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
-    return(list(len = paste0("std::floor(abs(", parsed_args[2], " - ", parsed_args[1],  ")  + 1)"),
+    return(list(len = paste0("(int) floor((double) abs(", parsed_args[2], " - ", parsed_args[1],  ")  + 1)"),
                 rdim = 0, cdim = 0))
   }
   
