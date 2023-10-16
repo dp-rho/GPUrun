@@ -1,6 +1,9 @@
 OPEN_EXPR <- "("
 CLOSE_EXPR <- ")"
 
+R_INF <- "Inf"
+C_INF <- "DBL_MAX"
+
 RAW_MATH_FUNS <- paste0(OPEN_EXPR, c("+", "-", "*", "/"))
 NEGATIVE_INDEX <- 2
 PARSED_MATH_FUNS <- c("add", "sub", "mul", "dvs")
@@ -8,11 +11,25 @@ PARSED_MATH_FUNS <- c("add", "sub", "mul", "dvs")
 RAW_RANGE_FUN <- paste0(OPEN_EXPR, ":")
 PARSED_RANGE_FUN <- "range"
 
+RANDOM_STATE <- "grid_state"
+
 RAW_PAREN_FUN <- paste0(OPEN_EXPR, "par")
 
 RAW_IFELSE_FUN <- paste0(OPEN_EXPR, "ifelse")
 
 RAW_MAT_FUN <- paste0(OPEN_EXPR, "matrix")
+
+RAW_RUNIF_FUN <- paste0(OPEN_EXPR, "runif")
+PARSED_RUNIF_FUN <- "runif_device"
+
+RAW_RNORM_FUN <- paste0(OPEN_EXPR, "rnorm")
+PARSED_RNORM_FUN <- "rnorm_device"
+
+RAW_RTRUNC_FUN <- paste0(OPEN_EXPR, "rtruncnorm")
+PARSED_RTRUNC_FUN <- "rtruncnorm_device"
+
+RAW_TWO_PARAM_RS <- c(RAW_RUNIF_FUN, RAW_RNORM_FUN)
+PARSED_TWO_PARAM_RS <- c(PARSED_RUNIF_FUN, PARSED_RNORM_FUN)
 
 RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
 PARSED_MAT_MUL_FUN <- "mat_mul"
@@ -34,7 +51,7 @@ PARSED_FOR_FUN <- "for"
 RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
 
 VOID_RET_FUNS <- c("inverse")
-RAW_VOID_RET_FUNS <- paste0(OPEN_EXPR, c("solve"))
+RAW_VOID_RET_FUNS <- c(RAW_INVERSE_FUN)
 
 LOOP_ITER_VARS <- paste0("i", 0:9)
 
@@ -113,7 +130,7 @@ parse_expr <- function(
   
   # Base case 2: a numeric constant
   suppressWarnings(
-    if (!is.na(as.numeric(expr_chars))) {
+    if (!is.na(as.numeric(expr_chars)) & expr_chars != R_INF) {
       return(expr_chars)
     }
   )
@@ -123,11 +140,16 @@ parse_expr <- function(
     return(NULL_ARG)
   }
   
+  # Base case 4: Infinity representation
+  if (expr_chars == R_INF) {
+    return(C_INF)
+  }
+  
   # General case: The form of (fun ...)
   
   # Check basic math functions
   math_index <- which(startsWith(expr_chars, RAW_MATH_FUNS))
-  if (length(math_index) != 0) {
+  if (length(math_index)) {
 
     # If the expression is being parsed to identify lengths or dimensions
     # and not to write the kernel, return the intermediate evaluation
@@ -174,6 +196,36 @@ parse_expr <- function(
     cur_expr <- paste0(PARSED_RANGE_FUN, "(", start, ", ", stop, ", ", index, ")")
     return(c(additional_lines, cur_expr))
   }
+  
+  # Check random number generation for two parameter random sample
+  rs_index <- which(startsWith(expr_chars, RAW_TWO_PARAM_RS))
+  if (length(rs_index) != 0) {
+    args_start <- nchar(RAW_TWO_PARAM_RS[rs_index]) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth,
+                          index=index, var_mapping=var_mapping,
+                          allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- get_additional_lines(parsed_args)
+    a <- parsed_args[[2]][length(parsed_args[[2]])]
+    b <- parsed_args[[3]][length(parsed_args[[3]])]
+    cur_expr <- paste0(PARSED_TWO_PARAM_RS[rs_index], "(", a, ", ", b, ", ", 
+                       RANDOM_STATE, ")")
+    return(c(additional_lines, cur_expr))
+  }
+  
+  # Check truncated normal distribution
+  if (startsWith(expr_chars, RAW_RTRUNC_FUN)) {
+    args_start <- nchar(RAW_RTRUNC_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth,
+                          index=index, var_mapping=var_mapping,
+                          allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- get_additional_lines(parsed_args)
+    cur_args <- lapply(parsed_args, function(vec) { vec[length(vec)] })
+    compiled_args <- paste(cur_args[2:length(cur_args)], collapse=", ")
+    cur_expr <- paste0(PARSED_RTRUNC_FUN, "(", compiled_args, ", ", RANDOM_STATE, ")")
+    return(c(additional_lines, cur_expr))
+  }
 
   # Check matrix dimension function
   if (startsWith(expr_chars, RAW_MAT_FUN)) {
@@ -183,7 +235,7 @@ parse_expr <- function(
                               index=index, 
                               allocate_intermediate_exprs=allocate_intermediate_exprs)
     dim_exprs <- lapply(args[2:length(args)], parse_expr, var_names=var_names, depth=depth,
-                          index="DEFAULT_DATA_INDEX", 
+                          index="DEFAULT_DATA_INDEX", var_mapping=var_mapping,
                           allocate_intermediate_exprs=allocate_intermediate_exprs)
 
     additional_lines <- get_additional_lines(append(list(expr_to_use), dim_exprs))

@@ -54,8 +54,9 @@ get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
     # first, and this is when intermediate allocations are requested, so if
     # no intermediate evaluation parsing is requested, type is CPU, else GPU
     if (allocate_intermediate_exprs) {
-      additional_lines <- c(additional_lines,
-                            get_intermediate_evaluation(args[i], var_names))
+      
+      intermediate_evaluations <- get_intermediate_evaluation(args[i], var_names)
+      additional_lines <- c(additional_lines, intermediate_evaluations)
       
       # Identify the correct GPU mapping, whether it is global Rvars or 
       # intermediate evaluations, and also identify correct index to access 

@@ -6,6 +6,9 @@ DATA_LENGTH <- "len"
 SYNC_GRID <- "grid.sync();"
 DEFAULT_INDEX <- "DEFAULT_DATA_INDEX"
 
+# Load function names from other packages
+rtruncnorm <- truncnorm::rtruncnorm
+
 
 #' @title Parse input expressions and write code to the kernel
 #' 
@@ -46,8 +49,7 @@ interpreter <- function(expr_ls, var_names) {
   for (i in seq_along(expr_ls)) {
     comment_delimeter <- paste0("/* Expression ", as.character(i), " code below */")
     text_of_expr <- c(comment_delimeter, write_expr(expr_ls[[i]], var_names), SYNC_GRID)
-    text_of_expr <- gsub(CPU_MAPPING, GPU_MAPPING, text_of_expr)
-    text_of_expr <- gsub(CPU_INTERMEDIATE_EVAL_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING, text_of_expr)
+    text_of_expr <- set_mem_type(text_of_expr, 'gpu')
     lines_to_write <- c(lines_to_write, indent_lines(text_of_expr))
   }
   

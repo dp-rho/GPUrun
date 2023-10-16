@@ -19,6 +19,262 @@ double* scratch_gpu_memory;
 
 /* Define functions available to kernel */
 
+/* Random number functions  */
+
+/*
+ * Generate a uniform random variable between a and b
+ */
+
+__device__ double runif_device(double a, double b, curandState_t* random_state) {
+  double rs = curand_uniform_double(random_state);
+  return ((b - a) * rs) + a;
+}
+
+
+/*
+ * Uniform density
+ */
+
+__device__ double dunif_device(double a, double b) {
+  return 1 / (b - a);
+}
+
+
+/*
+ * Generate an exponential random variable with in scale
+ * NOTE: Taken from rexp source code
+ */
+
+__device__ double rexp_device(double scale, curandState_t* random_state) {
+  
+  /* q[k-1] = sum(log(2)^k / k!)  k=1,..,n, */
+  /* The highest n (here 16) is determined by q[n-1] = 1.0 */
+  /* within standard precision */
+  const static double q[] =
+  {
+    0.6931471805599453,
+	  0.9333736875190459,
+	  0.9888777961838675,
+	  0.9984959252914960,
+	  0.9998292811061389,
+	  0.9999833164100727,
+	  0.9999985691438767,
+	  0.9999998906925558,
+	  0.9999999924734159,
+	  0.9999999995283275,
+	  0.9999999999728814,
+	  0.9999999999985598,
+	  0.9999999999999289,
+	  0.9999999999999968,
+	  0.9999999999999999,
+	  1.0000000000000000
+  };
+
+  double a = 0.;
+  double u = curand_uniform_double(random_state);
+  while(u <= 0. || u >= 1.) u = curand_uniform_double(random_state);
+  for (;;) {
+    u += u;
+    if (u > 1.) break;
+    a += q[0];
+  }
+  u -= 1.;
+
+  if (u <= q[0]) return a + u;
+    
+  int i = 0;
+  double ustar = curand_uniform_double(random_state); 
+  double umin = ustar;
+  do {
+    ustar = curand_uniform_double(random_state);
+    if (umin > ustar)
+      umin = ustar;
+    i++;
+  } while (u > q[i]);
+
+  return (a + umin * q[0]) * scale;
+}
+
+
+/*
+ * Exponential density
+ */
+
+__device__ double dexp_device(double x, double scale) {
+  return (1 / scale) * exp(-x / scale);
+}
+
+/*
+ * Generate a normal random variable with mean mu and standard deviation sd
+ */
+
+__device__ double rnorm_device(double mean, double sd, curandState_t* random_state) {
+  double rs = curand_normal_double(random_state);
+  return (rs * sd) + mean;
+}
+
+
+/*
+ * Normal density
+ */
+
+__device__ double dnorm_device(double x, double mean, double sd) {
+  x = (x - mean) / sd;
+  return M_1_SQRT_2PI * exp(-0.5 * x * x) / sd;
+} 
+
+
+/*
+ * Generate a truncated normal variable with mean and standard deviation sd
+ * NOTE: Implementation taken directly from Rtruncnorm package
+ */
+
+
+/* Exponential rejection sampling (a,inf) */
+__device__ double ers_a_inf(double a, curandState_t* random_state) {
+  const double ainv = 1.0 / a;
+  double x, rho;
+  do {
+    x = rexp_device(ainv, random_state) + a;
+    rho = exp(-0.5 * pow((x - a), 2));
+  } while (runif_device(0, 1, random_state) > rho);
+  return x;
+}
+
+/* Exponential rejection sampling (a,b) */
+__device__ double ers_a_b(double a, double b, curandState_t* random_state) {
+  const double ainv = 1.0 / a;
+  double x, rho;
+  do {
+    x = rexp_device(ainv, random_state) + a;
+    rho = exp(-0.5 * pow((x - a), 2));
+  } while (runif_device(0, 1, random_state) > rho || x > b);
+  return x;
+}
+
+/* Normal rejection sampling (a,b) */
+__device__ double nrs_a_b(double a, double b, curandState_t* random_state) {
+  double x = -DBL_MAX;
+  while (x < a || x > b) {
+    x = rnorm_device(0, 1, random_state);
+  }
+  return x;
+}
+
+/* Normal rejection sampling (a,inf) */
+__device__ double nrs_a_inf(double a, curandState_t* random_state) {
+  double x = -DBL_MAX;
+  while (x < a) {
+    x = rnorm_device(0, 1, random_state);
+  }
+  return x;
+}
+
+/* Half-normal rejection sampling */
+__device__ double hnrs_a_b(double a, double b, curandState_t* random_state) {
+  double x = a - 1.0;
+  while (x < a || x > b) {
+    x = rnorm_device(0, 1, random_state);
+    x = fabs(x);
+  }
+  return x;
+}
+
+/* Uniform rejection sampling */
+__device__ double urs_a_b(double a, double b, curandState_t* random_state) {
+  
+  const double phi_a = dnorm_device(a, 0, 1);
+  double x = 0.0, u = 0.0;
+
+  /* Upper bound of normal density on [a, b] */
+  const double ub = a < 0 && b > 0 ? M_1_SQRT_2PI : phi_a;
+  do {
+    x = runif_device(a, b, random_state);
+  } while (runif_device(0, 1, random_state) * ub > dnorm_device(x, 0, 1));
+  return x;
+}
+
+/* Truncated on the left  */
+__device__ double rtruncnorm_left(double a, double mean, double sd, 
+                                  curandState_t* random_state) {
+  const double alpha = (a - mean) / sd;
+  if (alpha < T4) {
+    return mean + sd * nrs_a_inf(alpha, random_state);
+  } else {
+    return mean + sd * ers_a_inf(alpha, random_state);
+  }
+}
+
+/* Truncated on the right */
+__device__ double rtruncnorm_right(double b, double mean, double sd, 
+                                   curandState_t* random_state) {
+  const double beta = (b - mean) / sd;
+  return mean - sd * rtruncnorm_left(-beta, 0.0, 1.0, random_state);
+}
+
+/* General case */
+__device__ double rtruncnorm_general(double a, double b, double mean, double sd,
+                                     curandState_t* random_state) {
+  const double alpha = (a - mean) / sd;
+  const double beta = (b - mean) / sd;
+  const double phi_a = dnorm_device(alpha, 0.0, 1.0);
+  const double phi_b = dnorm_device(beta, 0.0, 1.0);
+  if (alpha <= 0 && 0 <= beta) { 
+    if (phi_a <= T2 || phi_b <= T1) {  
+      return mean + sd * nrs_a_b(alpha, beta, random_state);
+    } else { 
+      return mean + sd * urs_a_b(alpha, beta, random_state);
+    }
+  } else if (alpha > 0) { 
+    if (phi_a / phi_b <= T1) {
+      return mean + sd * urs_a_b(alpha, beta, random_state);
+    } else {
+      if (alpha < T2) {
+        return mean + sd * hnrs_a_b(alpha, beta, random_state);
+      } else {
+        return mean + sd * ers_a_b(alpha, beta, random_state);
+      }
+    }
+  } else {
+    if (phi_b / phi_a <= T2) {
+      return mean - sd * urs_a_b(-beta, -alpha, random_state);
+    } else {
+      if (beta > -T3) {
+        return mean - sd * hnrs_a_b(-beta, -alpha, random_state);
+      } else {
+        return mean - sd * ers_a_b(-beta, -alpha, random_state);
+      }
+    }
+  }
+  return 0;
+}
+
+/*
+ * Generate a random truncated normal variable with potential truncation points a, b
+ */
+
+__device__ double rtruncnorm_device(double a, double b, double mean, double sd,
+                                    curandState_t* random_state) {
+
+  const int a_finite = (a == -DBL_MAX) ? 0 : 1;
+  const int b_finite = (b == DBL_MAX) ? 0 : 1;
+
+  if (a_finite && b_finite) {
+    return rtruncnorm_general(a, b, mean, sd, random_state);
+  } else if (!a_finite && b_finite) {
+    return rtruncnorm_right(b, mean, sd, random_state);
+  } else if (a_finite && !b_finite) {
+    return rtruncnorm_left(a, mean, sd, random_state);
+  } else if (!a_finite && !b_finite) {
+    return rnorm_device(mean, sd, random_state);
+  } 
+
+  return 0;
+}
+
+
+/* Basic vector math functions  */
+
 /*
  * Basic addition
  */
@@ -72,7 +328,7 @@ __host__ __device__ double range(double arg1, double arg2, int data_index) {
 __device__ double mat_mul(Rvar arg1, Rvar arg2, int data_index) {
 
   /* Check if evaluation index is out of bounds of return matrix  */
-  if (data_index > arg1.rdim * arg2.cdim) return 0;
+  if (data_index >= arg1.rdim * arg2.cdim) return 0;
 
   /* Identify the row and column index of the element being calculated  */
   int row_index = data_index % arg1.rdim;
@@ -98,11 +354,11 @@ __device__ double mat_mul(Rvar arg1, Rvar arg2, int data_index) {
 __device__ double transpose(Rvar arg, int data_index) {
  
   /* Check if evaluation index is out of bounds of return matrix  */
-  if (data_index > arg.rdim * arg.cdim) return 0;
+  if (data_index >= arg.rdim * arg.cdim) return 0;
 
   /* Identify the row and column index of the element being calculated  */
-  int row_index = data_index % arg.rdim;
-  int col_index = data_index / arg.rdim;
+  int row_index = data_index % arg.cdim;
+  int col_index = data_index / arg.cdim;
 
   /* Return the transposed index of the argument matrix */
   return arg.data[(arg.rdim * row_index) + col_index];
@@ -117,10 +373,10 @@ __device__ double transpose(Rvar arg, int data_index) {
  */
 
 __device__ void inverse(Rvar matrix_arg, double* working_copy, 
-                                 double* working_result,
-                                 int grid_index, int evals_per_thread, int grid_size, 
-                                 int thread_index, double* shared_mem_arr, 
-                                 cooperative_groups::grid_group grid) {
+                        double* working_result,
+                        int grid_index, int evals_per_thread, int grid_size, 
+                        int thread_index, double* shared_mem_arr, 
+                        cooperative_groups::grid_group grid) {
 
   /* Copy in matrix arg to the working copy, set working_result to identity matrix  */
   int data_index = grid_index;
@@ -206,15 +462,32 @@ __device__ void inverse(Rvar matrix_arg, double* working_copy,
  */
 
 __global__
-void kernel(int grid_size, double* scratch_gpu_memory)
+void kernel(int grid_size, unsigned long long random_seed, double* scratch_gpu_memory)
 {
+  /* Shared memory used for storage of evaluations or temporarily saved data, */
+  /* such as the column of interest in parallel Gauss-Jordan inverse          */
   __shared__ double evals[THREADS_PER_BLOCK * MAX_EVALS_PER_THREAD];
+
+  /* The indices that identify both thread index (repeated over blocks) */
+  /* and the unique grid index that each thread posseses                */
   int grid_index = blockDim.x * blockIdx.x + threadIdx.x;
   int thread_index = threadIdx.x;
+
+  /* Local indices used to temporarily store evaluated values before  */
+  /* writing them back to the global memory of the associated Rvar    */
   int _shared_mem_index = 0;
   int _eval_data_index = 0;
   int _guard_len = 0;
+
+  /* Initialized the group on all threads to allow grid level synchronization */
   cooperative_groups::grid_group grid = cooperative_groups::this_grid();
+  
+  /* Initialize random state for RNG  */
+  curandStateXORWOW_t* grid_state = (curandStateXORWOW_t*) 
+                                     malloc(sizeof(curandStateXORWOW_t));
+  curand_init(random_seed, grid_index, 0, grid_state);
+
+  double HNNG = 0;
 
   // [[Kernel::start]]
   // Machine generated code
@@ -266,16 +539,27 @@ void call_device() {
            max_evals);
   }
 
-  scratch_gpu_memory = (double*) malloc_device(max_evals * deviceProp.multiProcessorCount * 
-                                               BLOCKS_PER_SM * THREADS_PER_BLOCK * sizeof(double));
+  /* Retrieve random seed from R  */
+  unsigned long long random_seed = 420;
 
-  void* args[] = {&grid_size, &scratch_gpu_memory};
+  scratch_gpu_memory = (double*) malloc_device(max_evals * deviceProp.multiProcessorCount * 
+                                               BLOCKS_PER_SM * THREADS_PER_BLOCK * 
+                                                sizeof(double));
+
+  void* args[] = {&grid_size, &random_seed, &scratch_gpu_memory};
 
   cudaLaunchCooperativeKernel((void*) kernel, deviceProp.multiProcessorCount * BLOCKS_PER_SM, 
                               THREADS_PER_BLOCK, args);
 
   /* Require GPU synchronize before CPU resume execution  */
   cudaDeviceSynchronize();
+
+  /* Check for any errors during kernel launch  */
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    printf("CUDA error: %s\n", cudaGetErrorString(err));
+    return;
+  }
 
   /* Clean up memory from intermediate evaluations on GPU */
   free_int_evals();
@@ -332,8 +616,8 @@ void initialize_expr_lens() {
   g_evals_per_thread[/*x*/] = ceil((float) expr_len / grid_size);
   g_expr_count = /* R::g_expr_count */;
   // [[Expr.lens::end]]
-
-  }
+   
+}
 
 
 /*
@@ -363,6 +647,7 @@ void initialize_int_evals() {
   };
   g_int_eval_count = /* R::g_int_eval_count */;
   // [[Int.evals::end]]
+
 }
 
 

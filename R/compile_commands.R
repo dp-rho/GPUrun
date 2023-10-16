@@ -1,4 +1,5 @@
 require(Rcpp)
+require(truncnorm)
 require(devtools)
 
 PSEUDO_NAME <- "buildDyn"

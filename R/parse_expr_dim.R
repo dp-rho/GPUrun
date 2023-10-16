@@ -38,13 +38,18 @@ parse_expr_dim <- function(
   # Base case 2: a numeric constant
   suppressWarnings(
     if (!is.na(as.numeric(expr_chars))) {
-      return(list(len = 1, rdim = 0, cdim = 0))
+      return(list(len=1, rdim=0, cdim=0))
     }
   )
   
   # Base case 3: empty argument
   if (expr_chars == NULL_ARG) {
-    return(list(len = 0, rdim = 0, cdim = 0))
+    return(list(len=0, rdim=0, cdim=0))
+  }
+  
+  # Base case 4: Infinity representation
+  if (expr_chars == R_INF) {
+    return(list(len=1, rdim=0, cdim=0))
   }
   
   # Assignment operator `<-`
@@ -93,6 +98,36 @@ parse_expr_dim <- function(
                   cdim=parsed_dims[[3]]$len))
     }
   }
+  
+  # Two parameter random samples
+  rs_index <- which(startsWith(expr_chars, RAW_TWO_PARAM_RS))
+  if (length(rs_index) != 0) {
+    
+    args_start <- nchar(PARSED_TWO_PARAM_RS[rs_index]) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    
+    # Vector argument for n is simply taken to be the first value of the vector,
+    # size of vector is not used as in base R
+    n <- parse_expr(args[1], var_names = var_names, index = DEFAULT_INDEX,
+                    var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    
+    return(list(len=n, rdim=0, cdim=0))
+  }
+  
+  # truncated normal random samples
+  if (startsWith(expr_chars, RAW_RTRUNC_FUN)) {
+    
+    args_start <- nchar(RAW_RTRUNC_FUN) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+    
+    # Vector argument for n is simply taken to be the first value of the vector,
+    # size of vector is not used as in base R
+    n <- parse_expr(args[1], var_names = var_names, index = DEFAULT_INDEX,
+                    var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    
+    return(list(len=n, rdim=0, cdim=0))
+  }
+    
   
   # Basic elementwise math function
   math_index <- which(startsWith(expr_chars, RAW_MATH_FUNS))
@@ -176,9 +211,8 @@ parse_expr_dim <- function(
                 cdim = paste0(parsed_args[2], FIELD_OF, CDIM_TYPE)))
   }
   
-  # Check transpose/inverse function
-  if (startsWith(expr_chars, RAW_TRANSPOSE_FUN) | 
-      startsWith(expr_chars, RAW_INVERSE_FUN)) {
+  # Check transpose function
+  if (startsWith(expr_chars, RAW_TRANSPOSE_FUN)) {
     
     # Identify the matrix argument references, do not allocate additional
     # intermediate evaluations, those are allocated during top level parsing
@@ -190,5 +224,18 @@ parse_expr_dim <- function(
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),
                 rdim = paste0(parsed_args[1], FIELD_OF, CDIM_TYPE),
                 cdim = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE)))
+  }
+  
+  if (startsWith(expr_chars, RAW_INVERSE_FUN)) {
+    # Identify the matrix argument references, do not allocate additional
+    # intermediate evaluations, those are allocated during top level parsing
+    # calls of parse_expr, not dimensional parsing, which occurs after
+    parsed_info <- get_matrix_arg_refs(expr_chars, RAW_INVERSE_FUN, var_names,
+                                       allocate_intermediate_exprs = FALSE)
+    parsed_args <- parsed_info$parsed_args
+    
+    return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),
+                rdim = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE),
+                cdim = paste0(parsed_args[1], FIELD_OF, CDIM_TYPE)))
   }
 }

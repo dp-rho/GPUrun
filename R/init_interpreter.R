@@ -53,8 +53,8 @@ WRITE_FUNS <- list(
     var_assign <- paste0("g_int_evals[", index_to_write - 1, "] = {")
     var_inits <- c(".data = (double*) malloc_device(sizeof(double) * len),",
                    ".len = len,",
-                   paste0(".rdim = ", expr_to_write$rdim, ","),
-                   paste0(".cdim = ", expr_to_write$cdim))
+                   paste0(".rdim = (int) ", expr_to_write$rdim, ","),
+                   paste0(".cdim = (int) ", expr_to_write$cdim))
     var_inits <- c(indent_lines(var_inits), "};")
     return(c(len_assign, var_assign, var_inits))
   }
