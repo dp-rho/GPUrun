@@ -44,7 +44,7 @@ write_assign_loop <- function(
   # determines how many evaluations are needed in each thread
   var_ref <- get_ref(var_index, var_mapping =  var_mapping)
   var_len <- paste0(var_ref, ".len")
-
+  
   # Special case where the function being assigned directly handles
   # the assignment to target memory
   void_index <- which(startsWith(eval_expr, VOID_RET_FUNS))
@@ -58,7 +58,8 @@ write_assign_loop <- function(
   # The __shared__ memory array that stores evaluated results while the current
   # thread evaluates other indices, this allows efficient intermediate storage
   # of evaluated results and by extension allows concurrent evaluation of data
-  # with much larger dimension than the number of threads.
+  # with much larger dimension than the number of threads. If data is too large
+  # instead use global memory storage.
   store_results <- paste0(STORE_RESULT, "[", SHARED_MEM_INDEX, "]")
   
   # The Rvar structure that will have its data field updated at the unique

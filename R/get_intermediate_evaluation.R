@@ -24,7 +24,7 @@ get_intermediate_evaluation <- function(
 
   # If argument is a global variable, we do not need to evaluate it in an 
   # intermediate step, the data will be directly read from a global Rvar
-  if (arg %in% var_names | arg %in% g_int_eval_env$expr_to_eval_map) return(NULL)
+  if (arg %in% var_names) return(NULL)
   
   # General case where the argument is itself an expression to be evaluated,
   # thus we will create an intermediate evaluation Rvar structure and 

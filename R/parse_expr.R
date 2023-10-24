@@ -145,41 +145,42 @@ parse_expr <- function(
     return(C_INF)
   }
   
+  # Base case 5:
+  # If the expression is being parsed to identify lengths or dimensions
+  # and not to write the kernel and this expression exists as an intermediate
+  # evaluation (it is used in a matrix function), return the intermediate 
+  # evaluation Rvar structure with memory access available on either GPU or CPU
+  # dependent on the var_mapping, in cases with multiple matches (duplicate
+  # intermediate expressions), we can arbitrarily choose the first
+  if (expr_chars %in% g_int_eval_env$expr_to_eval_map &
+      !allocate_intermediate_exprs) {
+    var_index <- which(g_int_eval_env$expr_to_eval_map == expr_chars)
+    if (length(var_index > 1)) var_index = var_index[1]
+    return(get_ref(var_index, var_mapping = var_mapping))
+  }
+  
   # General case: The form of (fun ...)
   
   # Check basic math functions
   math_index <- which(startsWith(expr_chars, RAW_MATH_FUNS))
   if (length(math_index)) {
-
-    # If the expression is being parsed to identify lengths or dimensions
-    # and not to write the kernel, return the intermediate evaluation
-    # Rvar structure with memory access available on either GPU or CPU
-    # dependent on the var_mapping
-    if (expr_chars %in% g_int_eval_env$expr_to_eval_map &
-        !allocate_intermediate_exprs) {
-      var_index <- which(g_int_eval_env$expr_to_eval_map == expr_chars)
-      return(get_ref(var_index, var_mapping = var_mapping))
-    }
     
-    args_start <- nchar(RAW_MATH_FUNS[math_index]) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names = var_names, depth = depth,
-                          index = index, allocate_intermediate_exprs = allocate_intermediate_exprs)
+    # TODO: Apply parse_args fun to other cases for modularity
+    parsed_info <- parse_args(RAW_MATH_FUNS[math_index], expr_chars,
+                              var_names=var_names, depth=depth, index=index, 
+                              type=type, var_mapping=var_mapping, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    cur_args <- parsed_info$cur_args
     
     # Check special case of negative number
-    if (length(parsed_args) == 1 & math_index == NEGATIVE_INDEX) {
-      additional_lines <- get_additional_lines(parsed_args)
-      parsed_num <- parsed_args[1][length(parsed_args[1])]
-      cur_expr <- paste0("-(", parsed_num, ")")
+    if (length(cur_args) == 1 & math_index == NEGATIVE_INDEX) {
+      cur_expr <- paste0("-(", cur_args, ")")
       return(c(additional_lines, cur_expr))
     }
     
-    # General case of the form op(arg1, arg2) where op is some element wise math
-    additional_lines <- get_additional_lines(parsed_args)
-    parsed_num1 <- parsed_args[[1]][length(parsed_args[[1]])]
-    parsed_num2 <- parsed_args[[2]][length(parsed_args[[2]])]
-    cur_expr <- paste0(PARSED_MATH_FUNS[math_index], "(", parsed_num1,
-                       ", ", parsed_num2, ")")
+    cur_expr <- paste0(PARSED_MATH_FUNS[math_index], "(", cur_args[1],
+                       ", ", cur_args[2], ")")
     return(c(additional_lines, cur_expr))
   }
   
