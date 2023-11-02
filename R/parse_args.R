@@ -1,7 +1,7 @@
 parse_args <- function(fun_str, 
                        expr_chars,
                        var_names, 
-                       index = c(EVAL_DATA_INDEX, SHARED_MEM_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS), 
+                       index = c(EVAL_DATA_INDEX, STORAGE_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS), 
                        type = c("data", "ref"), 
                        var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                                        CPU_INTERMEDIATE_EVAL_MAPPING),
@@ -64,8 +64,8 @@ parse_args <- function(fun_str,
       }
     }
     else {
-      parsed_args[[i]] <- parse_expr(args[i], var_names = var_names, depth = depth,
-                                     index = index, allocate_intermediate_exprs = allocate_intermediate_exprs)
+      parsed_args[[i]] <- parse_expr(args[i], var_names=var_names, depth=depth,
+                                     index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
       additional_lines <- c(additional_lines, get_additional_lines(parsed_args[i]))
     }
   }

@@ -100,7 +100,7 @@ LOOP_ITER_VARS <- paste0("i", 0:9)
 parse_expr <- function(
     expr_chars, 
     var_names, 
-    index = c(EVAL_DATA_INDEX, SHARED_MEM_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS), 
+    index = c(EVAL_DATA_INDEX, STORAGE_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS), 
     type = c("data", "ref"), 
     var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                     CPU_INTERMEDIATE_EVAL_MAPPING),

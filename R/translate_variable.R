@@ -20,7 +20,7 @@
 translate_variable <- function(
     var_num, 
     mod_len = TRUE, 
-    index = c(EVAL_DATA_INDEX, SHARED_MEM_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS),
+    index = c(EVAL_DATA_INDEX, STORAGE_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS),
     var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                     CPU_INTERMEDIATE_EVAL_MAPPING)
 ) {

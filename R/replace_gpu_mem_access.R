@@ -84,7 +84,6 @@ replace_gpu_mem_access <- function(
   # Initialize the new memory accesses
   copy_mem_lines <- find_start_end_lines(compiled_code_lines, mem_flag_str)
   init_lines <- c()
-  # browser()
   if (length(access_env$mem_accesses)) {
     for (index in 1:length(access_env$mem_accesses)) {
       mem_info <- access_env$mem_accesses[[index]]

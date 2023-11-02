@@ -70,7 +70,7 @@ parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
     if (RAW_VOID_RET_FUNS[void_index] == RAW_INVERSE_FUN) {
       compiled_args <- paste(parsed_args[1], SCRATCH_MEM, TEMP_RET,
                              GRID_ID, TEMP_EVALS, "grid_size", THREAD_ID,
-                             STORE_RESULT, "grid", sep = ", ") 
+                             SHARED_ARR, "grid", sep = ", ") 
       cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
     }
   }
