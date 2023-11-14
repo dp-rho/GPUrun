@@ -935,11 +935,19 @@ void allocate_background_mem(int max_eval_size, int linalg_dim){
   /* matrix size of linear algebra functions called                                 */
   double* g_scratch_memory = (double*) malloc_device(max(max_eval_size, 
                                                          (int) pow(linalg_dim, 2)) * 
-                                                     sizeof(double)); 
-  double* g_Q = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-  double* g_tridiagonal = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-  double* g_eigvecs = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-  double* g_eigvals = (double*) malloc_device(linalg_dim * sizeof(double));
+                                                     sizeof(double));
+
+  /* Initialize pointers for global background memory used in linear algebra  */
+  double* g_Q = NULL;
+  double* g_tridiagonal = NULL;
+  double* g_eigvecs = NULL;
+  double* g_eigvals = NULL;
+  if (linalg_dim > 0) {
+    g_Q = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+    g_tridiagonal = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+    g_eigvecs = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+    g_eigvals = (double*) malloc_device(linalg_dim * sizeof(double));
+  }
 
   /* Copy pointers to __constant__ memory on device for fast global access  */
   g_mem = {
