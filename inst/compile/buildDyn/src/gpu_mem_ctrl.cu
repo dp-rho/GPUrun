@@ -2,7 +2,7 @@
 #include "cuda_headers.h"
 
 /* The array of globally accessible pointers to gpu ready dynamic memory  */
-void* gpu_mem[MAX_GPU_POINTERS];
+void* gpu_mem_ptrs[MAX_GPU_POINTERS];
 
 
 /*
@@ -18,23 +18,24 @@ void* malloc_device(size_t size) {
   int i = 0;
   for (; i < MAX_GPU_POINTERS; i++) {
     index = index % MAX_GPU_POINTERS;
-    if (!gpu_mem[index++]) break;
+    if (!gpu_mem_ptrs[index++]) break;
   }
 
   /* Case where there were no available pointers  */
   if (i == MAX_GPU_POINTERS) {
+    printf("Unable to allocate memory on device, no available pointers\n");
     return NULL;
   }
 
   /* Allocate the memory using cuda library */
-  cudaError_t err = cudaMalloc(&gpu_mem[index], size);
+  cudaError_t err = cudaMalloc(&gpu_mem_ptrs[index], size);
   if (err != cudaSuccess) {
     printf("CUDA error: Failed to allocate device memory (%s)\n",
            cudaGetErrorString(err));
     return NULL;
   }
 
-  return gpu_mem[index];
+  return gpu_mem_ptrs[index];
 }
 
 
@@ -48,9 +49,9 @@ void free_device(void* mem) {
 
   /* Find the pointer in the global array      */
   for (int i = 0; i < MAX_GPU_POINTERS; i++) {
-    if (gpu_mem[i] == mem) {
-      cudaFree(gpu_mem[i]);
-      gpu_mem[i] = NULL;
+    if (gpu_mem_ptrs[i] == mem) {
+      cudaFree(gpu_mem_ptrs[i]);
+      gpu_mem_ptrs[i] = NULL;
       return;
     }
   }
@@ -67,6 +68,7 @@ void memcpy_to_device(void* dev_mem, void* host_mem, size_t size) {
     printf("CUDA error: Failed to copy memory from host to device (%s)\n",
            cudaGetErrorString(err));
   }
+  cudaDeviceSynchronize();
 }
 
 
@@ -80,7 +82,7 @@ void memcpy_to_host(void* host_mem, void* dev_mem, size_t size) {
     printf("CUDA error: Failed to copy memory from device to host (%s)\n",
            cudaGetErrorString(err));
   }
-
+  cudaDeviceSynchronize();
 }
 
 

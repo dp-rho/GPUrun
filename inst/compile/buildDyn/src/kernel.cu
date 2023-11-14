@@ -15,14 +15,10 @@ __constant__ int gpu_evals_per_thread[MAX_EXPRS];
 
 /* Memory to be allocated on the GPU that is only used in multi purpose intermediate  */
 /* storage, the most common is intermediate storage after an expression evaluation    */
-/* before a global variable is updated with the evaluated values                      */
-double* scratch_gpu_memory;
-
-/* Memory for linear algebra functions  */
-double* gpu_Q;
-double* gpu_tridiagonal;
-double* gpu_eigvecs;
-double* gpu_eigvals;
+/* before a global variable is updated with the evaluated values, as well as linear   */
+/* algebgra functions.                                                                */
+gpu_store g_mem;
+__constant__ gpu_store gpu_mem;
 
 
 /* Define functions available to kernel */
@@ -380,7 +376,7 @@ __device__ double transpose(Rvar arg, int data_index) {
  * updates values in the pointer argument working_result
  */
 
-__device__ void inverse(Rvar matrix_arg, double* working_copy, 
+__device__ void inverse(Rvar matrix_arg,
                         double* working_result,
                         int grid_index, int evals_per_thread, int grid_size, 
                         int thread_index, double* shared_mem_arr, 
@@ -394,7 +390,7 @@ __device__ void inverse(Rvar matrix_arg, double* working_copy,
     if (data_index >= matrix_arg.len) break;
 
     /* Copy data */
-    working_copy[data_index] = matrix_arg.data[data_index];
+    gpu_mem.gpu_scratch_memory[data_index] = matrix_arg.data[data_index];
     
     /* Fill in identity matrix  */
     if (data_index % matrix_arg.rdim == data_index / matrix_arg.rdim) {
@@ -423,9 +419,9 @@ __device__ void inverse(Rvar matrix_arg, double* working_copy,
 
     /* Divide row of diagonal element by diagonal element */
     /* NOTE: Currently does not support matricies with more than SMs * 256 columns */
-    double divisor = working_copy[(zero_col * matrix_arg.rdim) + zero_col];
+    double divisor = gpu_mem.gpu_scratch_memory[(zero_col * matrix_arg.rdim) + zero_col];
     if (grid_index < matrix_arg.cdim) {
-      working_copy[(grid_index * matrix_arg.rdim) + zero_col] /= divisor;
+      gpu_mem.gpu_scratch_memory[(grid_index * matrix_arg.rdim) + zero_col] /= divisor;
     }
     else if (grid_index < 2 * matrix_arg.cdim) {
       working_result[(grid_index - matrix_arg.cdim) * matrix_arg.rdim + zero_col] /= divisor;
@@ -436,7 +432,8 @@ __device__ void inverse(Rvar matrix_arg, double* working_copy,
     /* NOTE: Not supported for matrices with more than 256 * MAX_EVALS_PER_THREAD rows  */
     data_index = thread_index;
     while (data_index < matrix_arg.rdim) {
-      shared_mem_arr[data_index] = working_copy[(zero_col * matrix_arg.rdim) + data_index];
+      shared_mem_arr[data_index] = gpu_mem.gpu_scratch_memory[(zero_col * matrix_arg.rdim) + 
+                                                              data_index];
       data_index += THREADS_PER_BLOCK;
     }
     __syncthreads();
@@ -452,10 +449,11 @@ __device__ void inverse(Rvar matrix_arg, double* working_copy,
       int row_index = data_index % matrix_arg.rdim;
 
       if (row_index != zero_col) {
-        working_copy[data_index] -= (working_copy[col_index * matrix_arg.rdim + zero_col] *
-                                     shared_mem_arr[row_index]);
-        working_result[data_index] -= (working_result[col_index * matrix_arg.rdim + zero_col] *
-                                       shared_mem_arr[row_index]);
+        gpu_mem.gpu_scratch_memory[data_index] -= (gpu_mem.gpu_scratch_memory[col_index * 
+                                                     matrix_arg.rdim + zero_col] *
+                                                   shared_mem_arr[row_index]);
+        working_result[data_index] -= (working_result[col_index * matrix_arg.rdim + 
+                                                      zero_col] * shared_mem_arr[row_index]);
       }
 
       data_index += grid_size;
@@ -474,15 +472,15 @@ __device__ void inverse(Rvar matrix_arg, double* working_copy,
  * gpu_Q and gpu_tridiagonal are updated.
  */
 
-__device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
-                                      double* gpu_tridiagonal, double* shared_arr,  
-                                      double* eval_memory, double* linalg_vec, int grid_size,
+__device__ void householder_reduction(Rvar matrix_arg, double* shared_arr,  
+                                      double* linalg_vec, int grid_size,
                                       int grid_index, int thread_index, int evals_per_thread,
                                       cooperative_groups::grid_group grid) {
   
   int row_index = grid_index % matrix_arg.rdim;
   int col_index = grid_index / matrix_arg.cdim;
   int data_index = grid_index;
+  int num_blocks = grid_size / THREADS_PER_BLOCK;
   __shared__ double scaler1;
   __shared__ double scaler2;
 
@@ -490,17 +488,17 @@ __device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
   for (int i = 0; i < evals_per_thread; i++) {
     
     /* Check potential overflow */
-    if (data_index > matrix_arg.len) break;
+    if (data_index >= matrix_arg.len) break;
 
     /* Initialize matrix that will store tridiagonal results  */
-    gpu_tridiagonal[data_index] = matrix_arg.data[data_index];
+    gpu_mem.gpu_tridiagonal[data_index] = matrix_arg.data[data_index];
 
     /* Initialize Q to identity matrix */
     if (row_index == col_index) {
-      gpu_Q[data_index] = 1;
+      gpu_mem.gpu_Q[data_index] = 1;
     }
     else {
-      gpu_Q[data_index] = 0;
+      gpu_mem.gpu_Q[data_index] = 0;
     }
 
     data_index += grid_size;
@@ -514,75 +512,71 @@ __device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
   /* Loop n-2 times to transform to tridiagonal form using householder matrices */
   for (int i = 0; i < (matrix_arg.rdim - 2); i++ ) {
 
+    /* Size of current iteration householder matrix */
+    int size_Q = (matrix_arg.rdim - i - 1);
+
     /* vectors x, u, p and q are all created in shared memory across all SMs  */
      
-    /* create vector x as bottom n-(i+1) elements of current matrix */
+    /* create vector x as first n - (i + 1) elements of current matrix  */
     data_index = thread_index;
-    while (data_index < matrix_arg.rdim) {
-      if (data_index < (i + 1)) {
-        shared_arr[data_index] = 0;
-      }
-      else {
-        shared_arr[data_index] = gpu_tridiagonal[(i * matrix_arg.rdim) + data_index];
-      }
+    while (data_index < size_Q) {
+      linalg_vec[data_index] = gpu_mem.gpu_tridiagonal[(size_Q * matrix_arg.rdim) + 
+                                                       data_index];
       data_index += THREADS_PER_BLOCK;
     }
     __syncthreads();
-    
+
     /* create vector u <- x + (sign) * norm(x) * e1, u overwrites x in shared_arr */
     /* This is not a parallel operation, as norm is sequential and only one index */
     /* is updated in the vector x, thus only the first thread of each block used  */
     if (thread_index == DEFAULT_DATA_INDEX) {
  
       /* determine sign for u = x + (sign) * e1 * norm(x) */
-      int sign = (gpu_tridiagonal[matrix_arg.len - 1] > 0) ? 1 : -1;
+      int sign = (gpu_mem.gpu_tridiagonal[0] > 0) ? 1 : -1;
  
       scaler1 = 0;
-      for (int j = (i + 1); j < matrix_arg.rdim; j++) {
-        scaler1 += (shared_arr[j] * shared_arr[j]);
+      for (int j = 0; j < size_Q; j++) {
+        scaler1 += (linalg_vec[j] * linalg_vec[j]);
       }
 
       /* Get norm of x  */
       double l1_norm = sqrt(scaler1);
 
       /* subtract the squared element that will be updated to create u  */
-      scaler1 -= (shared_arr[i + 1] * shared_arr[i + 1]);
+      scaler1 -= (linalg_vec[size_Q - 1] * linalg_vec[size_Q - 1]);
 
       /* update x to u, only element (i + 1) is updated  */
-      shared_arr[i + 1] += (sign * l1_norm);
+      linalg_vec[size_Q - 1] += (sign * l1_norm);
 
       /* get sum of squares for u, i.e., norm(u) ^ 2  */
-      scaler1 += (shared_arr[i + 1] * shared_arr[i + 1]);
+      scaler1 += (linalg_vec[size_Q - 1] * linalg_vec[size_Q - 1]);
+
+      /* set u index out of bounds to 0 */
+      linalg_vec[size_Q] = 0;
       
     }
     __syncthreads();
 
     /* create vector p <- A %*% u / (norm(u)^2 / 2) */
     data_index = thread_index;
-    while (data_index < matrix_arg.rdim) {
+    while (data_index < (size_Q + 1)) {
       
-      /* vector p is 0 for all indices < i  */
-      if (data_index < i) {
-        linalg_vec[data_index] = 0;
-      }
-
       /* Calculate p[data_index] <- A[data_index,] %*% u / (norm(u)^2 / 2)  */
-      else {
 
-        /* initialize matrix multiplication result  */
-        linalg_vec[data_index] = 0;
+      /* initialize matrix multiplication result  */
+      shared_arr[data_index] = 0;
 
-        /* vector u is 0 for index [0 - i], only need to multiply and sum (i + 1) onwards  */
-        for (int j = (i + 1); j < matrix_arg.rdim; j++) {
+      /* vector u is 0 for index >= size_Q  */
+      for (int j = 0; j < size_Q; j++) {
 
-          /* data_index is equiavalent to row_index for this loop */
-          linalg_vec[data_index] += (gpu_tridiagonal[(j * matrix_arg.rdim) + data_index] * 
-                                     shared_arr[j]);
-        }
-
-        /* Divide p[data_index] by H, with H <- norm(u)^2 / 2  */
-        linalg_vec[data_index] /= (scaler1 / 2);
+        /* data_index is equiavalent to row_index for this loop */
+        shared_arr[data_index] += (gpu_mem.gpu_tridiagonal[(j * matrix_arg.rdim) + 
+                                                           data_index] *
+                                   linalg_vec[j]);
       }
+
+      /* Divide p[data_index] by H, with H <- norm(u)^2 / 2  */
+      shared_arr[data_index] /= (scaler1 / 2);
 
       data_index += THREADS_PER_BLOCK;
     }
@@ -596,9 +590,11 @@ __device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
       scaler1 /= 2;
       scaler2 = 0;
       
-      /* vector u is 0 for index [0 - i], only need to multiply and sum (i + 1) onwards  */
-      for (int j = (i + 1); j < matrix_arg.rdim; j++) {
-        scaler2 += (shared_arr[j] * linalg_vec[j]);
+      /* vector u is 0 for index > size_Q */
+      for (int j = 0; j < size_Q; j++) {
+
+        /* Sum product of u[j] * p[j] */
+        scaler2 += (linalg_vec[j] * shared_arr[j]);
       }
 
       /* Use shared var to store K by dividing by 2H  */
@@ -608,13 +604,15 @@ __device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
 
     /* Calculate vector q <- p - K * u  */
     data_index = thread_index;
-    while (data_index < matrix_arg.rdim) {
+    while (data_index < (size_Q + 1)) {
       
-      /* ovewrite vector p in linalg_vec with vector q  */
-      linalg_vec[data_index] -= (scaler2 * shared_arr[data_index]);
+      /* ovewrite vector p in shared_arr with vector q  */
+      shared_arr[data_index] -= (scaler2 * linalg_vec[data_index]);
+      data_index += THREADS_PER_BLOCK;
     }
     __syncthreads();
 
+    
     /* Update tridiagonal matrix with computationally cheap but equivalent formula  */
     /* Naive formula:  A' <- P %*% A %*% P with P <- diag(n) - (u %*% t(u) / H)     */
     /* Computationally useful formula: A' <- A - (q %*% t(u)) - (u %*% t(q))        */
@@ -622,57 +620,72 @@ __device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
     /* Vector q is stored in linalg_vec, while vector u is stored in shared_arr     */
     data_index = grid_index;
     row_index = data_index % matrix_arg.rdim;
-    col_index = data_index / matrix_arg.cdim;
+    col_index = data_index / matrix_arg.rdim;
     for (int j = 0; j < evals_per_thread; j++) {
-      
+     
       /* Check overflow */
-      if (data_index > matrix_arg.len) break;
+      if (data_index >= matrix_arg.len) break;
 
-      /* Update tridiagonal matrix A' */
-      gpu_tridiagonal[data_index] -= (linalg_vec[row_index] * shared_arr[col_index] +
-                                      shared_arr[row_index] * linalg_vec[col_index]);
+      double qtu = (row_index <= size_Q && col_index < size_Q) ? 
+              shared_arr[row_index] * linalg_vec[col_index] : 0;
+      double utq = (row_index < size_Q && col_index <= size_Q) ?
+              linalg_vec[row_index] * shared_arr[col_index] : 0;
 
+
+      /* Update tridiagonal matrix A' <- A - (q %*% t(u)) - (u %*% t(q) */
+      gpu_mem.gpu_tridiagonal[data_index] -= (qtu + utq);
+   
       data_index += grid_size;
       row_index = data_index % matrix_arg.rdim;
-      col_index = data_index / matrix_arg.cdim;
-    }
-
-    /* Update accumulating matrix Q with Q' <- Q %*% P, do not explicitly create P  */
-    /* in any memory as we can avoid global memory reads by instead performing      */
-    /* repeated multiplications for each index of P that is recalculated, store the */
-    /* final result in global evaluation memory before writing it back to gpu_Q     */
-    data_index += grid_size;
-    row_index = data_index % matrix_arg.rdim;
-    col_index = data_index / matrix_arg.cdim;
-    for (int j = 0; j < evals_per_thread; j++) {
-
-      /* Check overflow */
-      if (data_index > matrix_arg.len) break;
-
-      /* Update global memory evaluations */
-      eval_memory[data_index] = 0;
-      for (int k = 0; k < matrix_arg.rdim; k++) {
-
-        /* determine base_p for base_p - u[id1] * u[id2]  */
-        // double base_p = (row_index == col_index) ? 1.0 : 0.0;
-        double p = (k == col_index) ? 1.0 : 0.0;
-        p -= (shared_arr[k] * shared_arr[col_index] / scaler1);
-        eval_memory[data_index] += (gpu_Q[(k * matrix_arg.rdim) + row_index] * p);
-      }
-
-      data_index += grid_size;
-      row_index = data_index % matrix_arg.rdim;
-      col_index = data_index / matrix_arg.cdim;
+      col_index = data_index / matrix_arg.rdim;
     }
     grid.sync();
 
-    /* Write the evaluated data back to gpu_Q */
-    data_index = grid_index;
-    for (int j = 0; j < evals_per_thread; j++) {
-      gpu_Q[data_index] = eval_memory[data_index];
-      data_index += grid_size;
+    /* Update accumulating matrix Q with Q' <- Q %*% P, do not explicitly create P  */
+    /* in any memory as we can avoid global memory reads by instead performing      */
+    /* repeated multiplications for each index of P that is recalculated            */
+
+    /* Computationally useful formula is Q` <- Q - ((Q %*% u) %*% t(u) / H) */
+
+    /* First compute Q %*% u and store in shared_arr  */
+    data_index = thread_index;
+    while (data_index < matrix_arg.rdim) {
+      
+      /* Accumulation of cross product  */
+      double res = 0.0;
+      
+      /* vector u is 0 for indices >= size_Q  */
+      for (int j = 0; j < size_Q; j++) {
+        res += gpu_mem.gpu_Q[(j * matrix_arg.rdim) + data_index] * linalg_vec[j];
+      }
+
+      /* store index of Q %*% u in shared_arr */
+      shared_arr[data_index] = res;
+
+      data_index += THREADS_PER_BLOCK;
     }
+    __syncthreads();
+
+    /* Update using Q` <- Q - ((Q %*% u) %*% t(u) / H)  */
+    data_index = grid_index;
+    row_index = data_index % matrix_arg.rdim;
+    col_index = data_index / matrix_arg.rdim;
+    for (int j = 0; j < evals_per_thread; j++) {
+     
+      /* Check overflow */
+      if (data_index >= matrix_arg.len) break;
+ 
+      /* Vector u is 0 for indices >= size_Q  */
+      double tu = (col_index < size_Q) ? linalg_vec[col_index] : 0.0;
+      gpu_mem.gpu_Q[data_index] -= (shared_arr[row_index] * tu / scaler1);
+      
+      data_index += grid_size;
+      row_index = data_index % matrix_arg.rdim;
+      col_index = data_index / matrix_arg.rdim;
+    }
+    grid.sync(); 
   }
+
 }
 
 
@@ -680,22 +693,18 @@ __device__ void householder_reduction(Rvar matrix_arg, double* gpu_Q,
  * Top level function to sample from multivariate normal distribution 
  */
 
-__device__ void mvrnorm_device(double* result, double* means, Rvar covar_matrix, 
-                               double* gpu_Q, double* gpu_tridiagonal, double* gpu_eigvecs, 
-                               double* gpu_eigvals, double* shared_arr, 
-                               double* scratch_memory, double* linalg_vec, 
-                               int grid_size, int grid_index, int thread_index, 
-                               int evals_per_thread, cooperative_groups::grid_group grid) {
-  
-  /* First find eigenvectors and eigenvalues of the covariance matrix */
+__device__ void mvrnorm_device(double* means, Rvar covar_matrix, double* result,
+                               double* shared_arr, double* linalg_vec, 
+                               int grid_size, int grid_index, 
+                               int thread_index, int evals_per_thread, 
+                               cooperative_groups::grid_group grid,
+                               curandState_t* random_state) {
+
+  /* Find eigenvectors and eigenvalues of the covariance matrix */
   
   /* Step 1 is to reduce matrix to tridiagonal form and save accumlated matrix Q  */
-  householder_reduction(covar_matrix, gpu_Q, gpu_tridiagonal, shared_arr, scratch_memory, 
-                        linalg_vec, grid_size, grid_index, thread_index, evals_per_thread, 
-                        grid);
-
-  
-  
+  householder_reduction(covar_matrix, shared_arr, linalg_vec, grid_size,
+                        grid_index, thread_index, evals_per_thread, grid);
 
 }
 
@@ -705,8 +714,7 @@ __device__ void mvrnorm_device(double* result, double* means, Rvar covar_matrix,
  */
 
 __global__
-void kernel(int grid_size, unsigned long long random_seed, double* scratch_gpu_memory,
-            double* gpu_Q, double* gpu_tridiagonal, double* gpu_eigvecs, double* gpu_eigvals)
+void kernel(int grid_size, unsigned long long random_seed)
 {
   /* Shared memory used for storage of evaluations or temporarily saved data, */
   /* such as the column of interest in parallel Gauss-Jordan inverse          */
@@ -722,6 +730,7 @@ void kernel(int grid_size, unsigned long long random_seed, double* scratch_gpu_m
   /* and the unique grid index that each thread posseses                */
   const int grid_index = blockDim.x * blockIdx.x + threadIdx.x;
   const int thread_index = threadIdx.x;
+  const int block_index = blockIdx.x;
 
   /* Local indices used to temporarily store evaluated values before  */
   /* writing them back to the global memory of the associated Rvar    */
@@ -767,17 +776,17 @@ void call_device() {
   store_expr_lens();
   int max_evals = *(std::max_element(g_evals_per_thread, g_evals_per_thread + g_expr_count));
 
-  /* Calculate the number of evals needed per block and raise error if this exceeds */
-  /* the maximum number of evaluations per block that has been pre calculated based */
-  /* on a CUDA device with at least 48kb of __shared__ memory per SM. Note that the */
-  /* evals per thread in each expression will vary as the goal is to maximize       */
-  /* concurrency, thus larger expressions will require more evaluations per thread. */
+  /* Calculate the number of maximum number of evaluations needed per thread, this    */
+  /* is required to allocate background memory and memory to store evaluated elements */
+  /* before overwriting the global Rvar memory in assignment. Note that the evals per */ 
+  /* thread in each expression will vary as the goal is to maximize concurrency, thus */
+  /* larger expressions will require more evaluations per thread.                     */
   cudaDeviceProp deviceProp;
   int dev = 0;
   cudaGetDeviceProperties(&deviceProp, dev);
   int grid_size = deviceProp.multiProcessorCount * BLOCKS_PER_SM * THREADS_PER_BLOCK;
 
-  // CHECK HOW EFFICIENT 2 BLOCKS_PER_SM IS WITH SIMILAR SHARED MEMSIZE PER BLOCK
+  /* Optimal threads per block and blocks per SM likely varies with hardware  */
   printf("Launching %d blocks with %d threads per block\n",
          deviceProp.multiProcessorCount * BLOCKS_PER_SM, THREADS_PER_BLOCK);
   printf("Maximum concurrent evaluation of %d evals per thread\n", 
@@ -787,15 +796,17 @@ void call_device() {
   /* Retrieve random seed from R  */
   unsigned long long random_seed = 420;
 
-  int linalg_dim = 1;  /* R::linalg_dim */ 
+  int linalg_dims[] = {/* R::linalg_dim */};
+
+  int linalg_dim = *(std::max_element(linalg_dims, 
+                                      linalg_dims + (sizeof(linalg_dims) / sizeof(int))));
 
   /* Allocate background memory on GPU  */
   allocate_background_mem(max_evals * deviceProp.multiProcessorCount * BLOCKS_PER_SM * 
                           THREADS_PER_BLOCK, linalg_dim);
 
   /* Create argument array to be passed to kernel */
-  void* args[] = {&grid_size, &random_seed, &scratch_gpu_memory, gpu_Q, gpu_tridiagonal,
-                  gpu_eigvecs, gpu_eigvals};
+  void* args[] = {&grid_size, &random_seed};
 
   /* Launch kernel with cooperative groups, allowing grid wide synchronization  */
   cudaLaunchCooperativeKernel((void*) kernel, deviceProp.multiProcessorCount * BLOCKS_PER_SM, 
@@ -810,6 +821,19 @@ void call_device() {
     printf("CUDA error: %s\n", cudaGetErrorString(err));
     return;
   }
+
+  /* DEBUG
+  double* SBOI = (double*) malloc(sizeof(double) * g_vars[2].len);
+  memcpy_to_host(SBOI, g_mem.gpu_Q, sizeof(double) * g_vars[2].len);
+  cudaDeviceSynchronize();
+  for (int i = 0; i < g_vars[2].len; i++) {
+    printf("Q index %d: %lf\n", i, SBOI[i]);
+  } 
+  memcpy_to_host(SBOI, g_mem.gpu_tridiagonal, sizeof(double) * g_vars[3].len);
+  cudaDeviceSynchronize();
+  for (int i = (1999); i < 2199; i++) {
+    printf("tri index %d: %lf\n", i, SBOI[i]);
+  }*/
 
   /* Clean up memory from intermediate evaluations on GPU */
   free_background_mem();
@@ -905,12 +929,36 @@ void initialize_int_evals() {
  */
 
 void allocate_background_mem(int max_eval_size, int linalg_dim){
-  scratch_gpu_memory = (double*) malloc_device(max_eval_size * sizeof(double));
-  gpu_Q = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-  gpu_tridiagonal = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-  gpu_eigvecs = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-  gpu_Q = (double*) malloc_device(linalg_dim * sizeof(double));
+  
+  /* Allocate global memory used for intermediate evaluations, the size required is */
+  /* the maximum between the largest evaluations needed for any expression and the  */
+  /* matrix size of linear algebra functions called                                 */
+  double* g_scratch_memory = (double*) malloc_device(max(max_eval_size, 
+                                                         (int) pow(linalg_dim, 2)) * 
+                                                     sizeof(double)); 
+  double* g_Q = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+  double* g_tridiagonal = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+  double* g_eigvecs = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+  double* g_eigvals = (double*) malloc_device(linalg_dim * sizeof(double));
+
+  /* Copy pointers to __constant__ memory on device for fast global access  */
+  g_mem = {
+    .gpu_scratch_memory = g_scratch_memory,
+    .gpu_tridiagonal = g_tridiagonal,
+    .gpu_Q = g_Q,
+    .gpu_eigvecs = g_eigvecs,
+    .gpu_eigvals = g_eigvals
+  };
+
+  cudaError_t err = cudaMemcpyToSymbol(gpu_mem, &g_mem, sizeof(gpu_store));
+  if (err != cudaSuccess) {
+    printf("CUDA error while copying background gpu pointers to __constant__ memory: %s\n",
+           cudaGetErrorString(err));
+  }
+  cudaDeviceSynchronize();
 }
+
+
 
 
 /*
@@ -930,10 +978,11 @@ void free_int_evals() {
 
 void free_background_mem() {
   free_int_evals();
-  free_device(gpu_Q);
-  free_device(gpu_tridiagonal);
-  free_device(gpu_eigvecs);
-  free_device(gpu_eigvals);
+  free_device(g_mem.gpu_scratch_memory);
+  free_device(g_mem.gpu_Q);
+  free_device(g_mem.gpu_tridiagonal);
+  free_device(g_mem.gpu_eigvecs);
+  free_device(g_mem.gpu_eigvals);
 }
 
 

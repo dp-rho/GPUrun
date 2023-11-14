@@ -1,4 +1,4 @@
-SCRATCH_MEM <- "scratch_gpu_memory"
+SCRATCH_MEM <- "gpu_mem.gpu_scratch_memory"
 
 #' @title Recursively parse a matrix function call to generate compiled code
 #'
@@ -53,13 +53,6 @@ parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
     return(get_ref(var_index, var_mapping = var_mapping))
   }
   
-  # Identify the matrix argument references and any additional lines of code
-  # needed for intermediate evaluation
-  parsed_info <- get_matrix_arg_refs(expr_chars, raw_fun_str, var_names,
-                                     allocate_intermediate_exprs = allocate_intermediate_exprs)
-  additional_lines <- parsed_info$additional_lines
-  parsed_args <- parsed_info$parsed_args
-  
   # Check special case where function requires taking the return value
   # as an argument
   void_index <- which(startsWith(raw_fun_str, RAW_VOID_RET_FUNS))
@@ -68,13 +61,51 @@ parse_matrix_expr <- function(expr_chars, raw_fun_str, var_names, var_mapping,
     
     # Inverse matrix
     if (RAW_VOID_RET_FUNS[void_index] == RAW_INVERSE_FUN) {
-      compiled_args <- paste(parsed_args[1], SCRATCH_MEM, TEMP_RET,
+      parsed_info <- get_matrix_arg_refs(expr_chars, raw_fun_str, var_names,
+                                         allocate_intermediate_exprs = allocate_intermediate_exprs)
+      additional_lines <- parsed_info$additional_lines
+      parsed_args <- parsed_info$parsed_args
+      
+      compiled_args <- paste(parsed_args[1], TEMP_RET,
                              GRID_ID, TEMP_EVALS, "grid_size", THREAD_ID,
                              SHARED_ARR, "grid", sep = ", ") 
       cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
     }
+    
+    # Multivariate normal sampling case
+    if (RAW_VOID_RET_FUNS[void_index] == RAW_MVRNORM_FUN) {
+      
+      args_start <- nchar(RAW_MVRNORM_FUN) + 2
+      args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+      n <- parse_expr(args[1], var_names, index="DEFAULT_DATA_INDEX",
+                      allocate_intermediate_exprs=allocate_intermediate_exprs)
+
+      parsed_info <- get_matrix_arg_refs(expr_chars, raw_fun_str, var_names,
+                                         allocate_intermediate_exprs=allocate_intermediate_exprs,
+                                         input_args=args[2:length(args)])
+      additional_lines <- parsed_info$additional_lines
+      parsed_args <- parsed_info$parsed_args
+      
+      # Save dimension of covariance matrix for linalg memory allocation
+      covar_dim <- set_mem_type(paste0(parsed_args[2], ".rdim"), 'cpu')
+      assign("linalg_dims", append(g_linalg_env$linalg_dims, covar_dim), 
+             g_linalg_env)
+      
+      mu_data <- paste0(parsed_args[1], ".data")
+      
+      compiled_args <- paste(mu_data, parsed_args[2], TEMP_RET, SHARED_ARR,
+                             "linalg_vec", "grid_size", GRID_ID,
+                             THREAD_ID, TEMP_EVALS, "grid",
+                             RANDOM_STATE, sep = ", ")
+      cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
+    }
   }
   else {
+    parsed_info <- get_matrix_arg_refs(expr_chars, raw_fun_str, var_names,
+                                       allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    parsed_args <- parsed_info$parsed_args
+    
     compiled_args <- paste(c(parsed_args, EVAL_DATA_INDEX), collapse = ", ")
     cur_expr <- paste0(parsed_fun_str, "(", compiled_args, ")")
   }

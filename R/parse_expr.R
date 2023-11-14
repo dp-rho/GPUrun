@@ -28,8 +28,14 @@ PARSED_RNORM_FUN <- "rnorm_device"
 RAW_RTRUNC_FUN <- paste0(OPEN_EXPR, "rtruncnorm")
 PARSED_RTRUNC_FUN <- "rtruncnorm_device"
 
+RAW_MVRNORM_FUN <- paste0(OPEN_EXPR, "mvrnorm")
+PARSED_MVRNORM_FUN <- "mvrnorm_device"
+
 RAW_TWO_PARAM_RS <- c(RAW_RUNIF_FUN, RAW_RNORM_FUN)
 PARSED_TWO_PARAM_RS <- c(PARSED_RUNIF_FUN, PARSED_RNORM_FUN)
+
+RAW_SAMPLING_FUNS <- c(RAW_TWO_PARAM_RS, RAW_RTRUNC_FUN)
+PARSED_SAMPLING_FUNS <- c(PARSED_TWO_PARAM_RS, PARSED_RTRUNC_FUN)
 
 RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
 PARSED_MAT_MUL_FUN <- "mat_mul"
@@ -50,8 +56,8 @@ PARSED_FOR_FUN <- "for"
 
 RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
 
-VOID_RET_FUNS <- c("inverse")
-RAW_VOID_RET_FUNS <- c(RAW_INVERSE_FUN)
+VOID_RET_FUNS <- c("inverse", "mvrnorm")
+RAW_VOID_RET_FUNS <- c(RAW_INVERSE_FUN, RAW_MVRNORM_FUN)
 
 LOOP_ITER_VARS <- paste0("i", 0:9)
 
@@ -186,43 +192,38 @@ parse_expr <- function(
   
   # Check range function (i.e. ':')
   if (startsWith(expr_chars, RAW_RANGE_FUN)) {
-    args_start <- nchar(RAW_RANGE_FUN) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth,
-                          index="DEFAULT_DATA_INDEX", 
-                          allocate_intermediate_exprs=allocate_intermediate_exprs)
-    additional_lines <- get_additional_lines(parsed_args)
-    start <- parsed_args[[1]][length(parsed_args[[1]])]
-    stop <- parsed_args[[2]][length(parsed_args[[2]])]
-    cur_expr <- paste0(PARSED_RANGE_FUN, "(", start, ", ", stop, ", ", index, ")")
+    parsed_info <- parse_args(RAW_RANGE_FUN, expr_chars,
+                              var_names=var_names, depth=depth, index="DEFAULT_DATA_INDEX", 
+                              type=type, var_mapping=var_mapping, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    cur_args <- parsed_info$cur_args
+    cur_expr <- paste0(PARSED_RANGE_FUN, "(", cur_args[1], ", ", cur_args[2], ", ", index, ")")
     return(c(additional_lines, cur_expr))
   }
   
   # Check random number generation for two parameter random sample
   rs_index <- which(startsWith(expr_chars, RAW_TWO_PARAM_RS))
   if (length(rs_index) != 0) {
-    args_start <- nchar(RAW_TWO_PARAM_RS[rs_index]) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth,
-                          index=index, var_mapping=var_mapping,
-                          allocate_intermediate_exprs=allocate_intermediate_exprs)
-    additional_lines <- get_additional_lines(parsed_args)
-    a <- parsed_args[[2]][length(parsed_args[[2]])]
-    b <- parsed_args[[3]][length(parsed_args[[3]])]
-    cur_expr <- paste0(PARSED_TWO_PARAM_RS[rs_index], "(", a, ", ", b, ", ", 
-                       RANDOM_STATE, ")")
+    parsed_info <- parse_args(RAW_TWO_PARAM_RS, expr_chars,
+                              var_names=var_names, depth=depth, index=index,
+                              type=type, var_mapping=var_mapping, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    cur_args <- parsed_info$cur_args
+    cur_expr <- paste0(PARSED_TWO_PARAM_RS[rs_index], "(", cur_args[1], ", ", 
+                       cur_args[2], ", ", RANDOM_STATE, ")")
     return(c(additional_lines, cur_expr))
   }
   
-  # Check truncated normal distribution
+  # Check truncated normal distribution sampling
   if (startsWith(expr_chars, RAW_RTRUNC_FUN)) {
-    args_start <- nchar(RAW_RTRUNC_FUN) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args, parse_expr, var_names=var_names, depth=depth,
-                          index=index, var_mapping=var_mapping,
-                          allocate_intermediate_exprs=allocate_intermediate_exprs)
-    additional_lines <- get_additional_lines(parsed_args)
-    cur_args <- lapply(parsed_args, function(vec) { vec[length(vec)] })
+    parsed_info <- parse_args(RAW_RTRUNC_FUN, expr_chars,
+                              var_names=var_names, depth=depth, index=index, 
+                              type=type, var_mapping=var_mapping, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    cur_args <- parsed_info$cur_args
     compiled_args <- paste(cur_args[2:length(cur_args)], collapse=", ")
     cur_expr <- paste0(PARSED_RTRUNC_FUN, "(", compiled_args, ", ", RANDOM_STATE, ")")
     return(c(additional_lines, cur_expr))
@@ -266,6 +267,12 @@ parse_expr <- function(
   if (startsWith(expr_chars, RAW_INVERSE_FUN)) {
     return(parse_matrix_expr(expr_chars, RAW_INVERSE_FUN, var_names, var_mapping,
                              allocate_intermediate_exprs, PARSED_INVERSE_FUN))
+  }
+  
+  # Check matrix inverse function
+  if (startsWith(expr_chars, RAW_MVRNORM_FUN)) {
+    return(parse_matrix_expr(expr_chars, RAW_MVRNORM_FUN, var_names, var_mapping,
+                             allocate_intermediate_exprs, PARSED_MVRNORM_FUN))
   }
   
   # Check assignment function
@@ -369,31 +376,26 @@ parse_expr <- function(
   
   # Check for paren function, i.e., '('
   if (startsWith(expr_chars, RAW_PAREN_FUN)) {
-    args_start <- nchar(RAW_PAREN_FUN) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    eval_expr_lines <- parse_expr(args[1], var_names, depth=depth, index=index,
-                                  var_mapping=var_mapping,
-                                  allocate_intermediate_exprs=allocate_intermediate_exprs)
-    additional_lines <- get_additional_lines(list(eval_expr_lines))
-    cur_line <- paste0("(", eval_expr_lines[length(eval_expr_lines)], ")")
-    appended_lines <- c(additional_lines, cur_line)
-    return(appended_lines)
+    parsed_info <- parse_args(RAW_PAREN_FUN, expr_chars,
+                              var_names=var_names, depth=depth, index=index, 
+                              type=type, var_mapping=var_mapping, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    cur_args <- parsed_info$cur_args
+    cur_line <- paste0("(", cur_args[1], ")")
+    return(c(additional_lines, cur_line))
   }
   
   # Check vectorized ifelse function
   if (startsWith(expr_chars, RAW_IFELSE_FUN)) {
-    args_start <- nchar(RAW_IFELSE_FUN) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    eval_expr_lines <- lapply(args, parse_expr, var_names=var_names, depth=depth, var_mapping=var_mapping,
-                          index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
-    
-    additional_lines <- get_additional_lines(eval_expr_lines)
-    condition <- eval_expr_lines[[1]][length(eval_expr_lines[[1]])]
-    t_result <- eval_expr_lines[[2]][length(eval_expr_lines[[2]])]
-    f_result <- eval_expr_lines[[3]][length(eval_expr_lines[[3]])]
-    cur_expr <- paste0(condition, " ? ", t_result, " : ", f_result)
-    appended_lines <- c(additional_lines, cur_expr)
-    return(appended_lines)
+    parsed_info <- parse_args(RAW_IFELSE_FUN, expr_chars,
+                              var_names=var_names, depth=depth, index=index, 
+                              type=type, var_mapping=var_mapping, 
+                              allocate_intermediate_exprs=allocate_intermediate_exprs)
+    additional_lines <- parsed_info$additional_lines
+    cur_args <- parsed_info$cur_args
+    cur_expr <- paste0(cur_args[1], " ? ", cur_args[2], " : ", cur_args[3])
+    return(c(additional_lines, cur_expr))
   }
   
   # Check for loop function

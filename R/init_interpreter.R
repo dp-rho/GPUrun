@@ -19,6 +19,12 @@ DIMS <- c(LEN_TYPE, RDIM_TYPE, CDIM_TYPE)
 g_loop_env <- new.env(parent = .GlobalEnv)
 g_expr_env <- new.env(parent = .GlobalEnv)
 g_int_eval_env <- new.env(parent = .GlobalEnv)
+g_linalg_env <- new.env(parent = .GlobalEnv)
+
+# Currently g_linalg_env is used only to track the largest dimension
+# needed for a linalg function, as linalg functions require additional
+# background memory
+assign("linalg_dims", c(), envir = g_linalg_env)
 
 
 # The functions used to write the stored dimensional information into the  
@@ -73,7 +79,8 @@ UPDATE_EXPRS <- list(
   
   # Intermediate evaluation Rvar case
   'int_eval' = substitute({
-    exprs_to_write[[count + 1]] <- parse_expr_dim(cur_expr, var_names)
+    exprs_to_write[[count + 1]] <- parse_expr_dim(cur_expr, var_names, 
+                                                  type='return_size')
     expr_to_eval_map <- append(expr_to_eval_map, cur_expr)
   })
 )

@@ -17,8 +17,12 @@
 #' parse_expr_dim(expr_chars, var_names)
 parse_expr_dim <- function(
     expr_chars, 
-    var_names
+    var_names,
+    type = c('num_evals', 'return_size')
 ) {
+  
+  # Match args
+  type <- match.arg(type)
   
   # Base case 1: a variable in the 
   var_index <- which(var_names == expr_chars)
@@ -62,7 +66,7 @@ parse_expr_dim <- function(
     # not change size throughout the evaluation to maximize parallel operations
     # and minimize overhead of checking and updating sizes, which is not 
     # generally parallel
-    return(parse_expr_dim(args[1], var_names))
+    return(parse_expr_dim(args[2], var_names, type=type))
   }
   
   # Index function
@@ -70,7 +74,7 @@ parse_expr_dim <- function(
     
     args_start <- nchar(RAW_INDEX_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_dims <- lapply(args, parse_expr_dim, var_names = var_names)
+    parsed_dims <- lapply(args, parse_expr_dim, var_names=var_names, type=type)
 
     # Case where we take only one index argument, i.e., x[1:10]
     if (length(parsed_dims) == 2) {
@@ -100,34 +104,43 @@ parse_expr_dim <- function(
   }
   
   # Two parameter random samples
-  rs_index <- which(startsWith(expr_chars, RAW_TWO_PARAM_RS))
+  rs_index <- which(startsWith(expr_chars, RAW_SAMPLING_FUNS))
   if (length(rs_index) != 0) {
     
-    args_start <- nchar(PARSED_TWO_PARAM_RS[rs_index]) + 2
+    args_start <- nchar(PARSED_SAMPLING_FUNS[rs_index]) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     
     # Vector argument for n is simply taken to be the first value of the vector,
     # size of vector is not used as in base R
-    n <- parse_expr(args[1], var_names = var_names, index = DEFAULT_INDEX,
-                    var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    n <- parse_expr(args[1], var_names=var_names, index=DEFAULT_INDEX,
+                    var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
     
     return(list(len=n, rdim=0, cdim=0))
   }
   
-  # truncated normal random samples
-  if (startsWith(expr_chars, RAW_RTRUNC_FUN)) {
+  # Check multivariate normal
+  if (startsWith(expr_chars, RAW_MVRNORM_FUN)) {
     
-    args_start <- nchar(RAW_RTRUNC_FUN) + 2
+    args_start <- nchar(RAW_MVRNORM_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     
     # Vector argument for n is simply taken to be the first value of the vector,
     # size of vector is not used as in base R
-    n <- parse_expr(args[1], var_names = var_names, index = DEFAULT_INDEX,
-                    var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    n <- parse_expr(args[1], var_names, index=DEFAULT_INDEX,
+                    var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
     
-    return(list(len=n, rdim=0, cdim=0))
+    parsed_mu <- parse_expr(args[2], var_names, type='ref',
+                            var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
+    
+    mu_size <- paste0(parsed_mu, FIELD_OF, LEN_TYPE)
+    
+    # The number of evaluations needed is equivalent to S, yet the returned
+    # object has size equal to len(mu) * n
+    if (type == 'return_size') { 
+      return(list(len=paste0(n, " * ", mu_size), rdim=n, cdim=mu_size))
+    }
+    return(list(len=paste0(mu_size, " * ", mu_size), rdim=mu_size, cdim=mu_size))
   }
-    
   
   # Basic elementwise math function
   math_index <- which(startsWith(expr_chars, RAW_MATH_FUNS))
@@ -137,11 +150,11 @@ parse_expr_dim <- function(
     
     # Check special case of negative number
     if (length(args) == 1 & math_index == NEGATIVE_INDEX) {
-      return(parse_expr_dim(args[1], var_names))
+      return(parse_expr_dim(args[1], var_names, type=type))
     }
     
     # Default case of op(a, b), with op some elementwise math function
-    parsed_args <- lapply(args, parse_expr_dim, var_names = var_names)
+    parsed_args <- lapply(args, parse_expr_dim, var_names=var_names, type=type)
 
     # The dimension of an elementwise math function is always the max of the 
     # arguments' dimensions
@@ -163,8 +176,8 @@ parse_expr_dim <- function(
     # be possible but tedious to implement a single iteration CPU evaluation
     # that initializes intermediate values, but this seems like a 
     # superfluous feature, (X %*% X):y is not particularly useful or common
-    parsed_args <- lapply(args, parse_expr, var_names = var_names, index = DEFAULT_INDEX,
-                          var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    parsed_args <- lapply(args, parse_expr, var_names=var_names, index=DEFAULT_INDEX,
+                          var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
     return(list(len = paste0("(int) floor((double) abs(", parsed_args[2], " - ", parsed_args[1],  ")  + 1)"),
                 rdim = 0, cdim = 0))
   }
@@ -173,7 +186,7 @@ parse_expr_dim <- function(
   if (startsWith(expr_chars, RAW_PAREN_FUN)) {
     args_start <- nchar(RAW_PAREN_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_arg <- parse_expr_dim(args[1], var_names=var_names)
+    parsed_arg <- parse_expr_dim(args[1], var_names=var_names, type=type)
     return(parsed_arg)
   }
   
@@ -181,7 +194,7 @@ parse_expr_dim <- function(
   if (startsWith(expr_chars, RAW_IFELSE_FUN)) {
     args_start <- nchar(RAW_IFELSE_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_arg <- parse_expr_dim(args[1], var_names=var_names)
+    parsed_arg <- parse_expr_dim(args[1], var_names=var_names, type=type)
     return(parsed_arg)
   }
 
@@ -189,8 +202,8 @@ parse_expr_dim <- function(
   if (startsWith(expr_chars, RAW_MAT_FUN)) {
     args_start <- nchar(RAW_MAT_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args[2:length(args)], parse_expr, var_names = var_names, index = DEFAULT_INDEX,
-                          var_mapping = CPU_MAPPING, allocate_intermediate_exprs = FALSE)
+    parsed_args <- lapply(args[2:length(args)], parse_expr, var_names=var_names, index=DEFAULT_INDEX,
+                          var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
     return(list(len=paste0(parsed_args[1], " * ", parsed_args[2]),
                 rdim=parsed_args[1], cdim=parsed_args[2]))
   }
@@ -202,7 +215,7 @@ parse_expr_dim <- function(
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
     parsed_info <- get_matrix_arg_refs(expr_chars, RAW_MAT_MUL_FUN, var_names,
-                                       allocate_intermediate_exprs = FALSE)
+                                       allocate_intermediate_exprs=FALSE)
     parsed_args <- parsed_info$parsed_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE, " * ", 
@@ -218,7 +231,7 @@ parse_expr_dim <- function(
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
     parsed_info <- get_matrix_arg_refs(expr_chars, RAW_TRANSPOSE_FUN, var_names,
-                                       allocate_intermediate_exprs = FALSE)
+                                       allocate_intermediate_exprs=FALSE)
     parsed_args <- parsed_info$parsed_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),
@@ -231,7 +244,7 @@ parse_expr_dim <- function(
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
     parsed_info <- get_matrix_arg_refs(expr_chars, RAW_INVERSE_FUN, var_names,
-                                       allocate_intermediate_exprs = FALSE)
+                                       allocate_intermediate_exprs=FALSE)
     parsed_args <- parsed_info$parsed_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),

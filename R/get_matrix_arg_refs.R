@@ -35,10 +35,14 @@ INT_EVAL_REF <- "int_evals"
 #' get_matrix_arg_refs(expr_chars, matrix_fun_str, var_names, 
 #'                     allocate_intermediate_exprs)
 get_matrix_arg_refs <- function(expr_chars, matrix_fun_str, var_names,
-                                allocate_intermediate_exprs) {
+                                allocate_intermediate_exprs,
+                                input_args=NULL) {
   
-  args_start <- nchar(matrix_fun_str) + 2
-  args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+  if (is.null(input_args)) {
+    args_start <- nchar(matrix_fun_str) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+  }
+  else args <- input_args
   parsed_args <- c()
   additional_lines <- c()
 

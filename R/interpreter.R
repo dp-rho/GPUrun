@@ -55,6 +55,9 @@ interpreter <- function(expr_ls, var_names) {
   
   post_kernel_lines <- kernel_lines[line_indices$end:length(kernel_lines)]
   
+  # Write linear algebra dimension information for memory allocation
+  post_kernel_lines <- write_linalg_dims(post_kernel_lines)
+  
   # Write the dimensions of the intermediate evaluation Rvar structures to the
   # compiled initialization function in kernel.cu called initialize_int_evals()
   post_kernel_lines <- write_parsed_dimensions(post_kernel_lines, g_int_eval_env)

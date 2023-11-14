@@ -38,7 +38,7 @@ void bind_var(NumericVector var, NumericVector dimensions) {
     .cdim = (int) dimensions[COL_DIM]
   };
 
-  /* Allocated the data array for the Rvar and copy R object data */
+  /* Allocate the data array for the Rvar and copy R object data  */
   new_var.data = (double*) malloc_device(sizeof(double) * new_var.len);
   memcpy_to_device(new_var.data, var.begin(), sizeof(double) * new_var.len);
 
