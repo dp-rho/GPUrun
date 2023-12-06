@@ -2,3 +2,4 @@
 *.so
 *.swp
 .Rhistory
+.RData
