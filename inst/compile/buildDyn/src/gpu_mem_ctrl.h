@@ -9,7 +9,8 @@ typedef struct gpu_background_storage{
   double* gpu_scratch_memory;
   double* gpu_tridiagonal;
   double* gpu_Q;
-  double* gpu_eigvecs;
-  double* gpu_eigvals;
+  double* gpu_eigvalues;
+  double* gpu_eigvectors;
+  double* gpu_Qprime;
 } gpu_store;
 

@@ -54,7 +54,7 @@ __device__ double rexp_device(double scale, curandState_t* random_state) {
   /* q[k-1] = sum(log(2)^k / k!)  k=1,..,n, */
   /* The highest n (here 16) is determined by q[n-1] = 1.0 */
   /* within standard precision */
-  const static double q[] =
+  static double q[] =
   {
     0.6931471805599453,
 	  0.9333736875190459,
@@ -136,7 +136,7 @@ __device__ double dnorm_device(double x, double mean, double sd) {
 
 /* Exponential rejection sampling (a,inf) */
 __device__ double ers_a_inf(double a, curandState_t* random_state) {
-  const double ainv = 1.0 / a;
+  double ainv = 1.0 / a;
   double x, rho;
   do {
     x = rexp_device(ainv, random_state) + a;
@@ -147,7 +147,7 @@ __device__ double ers_a_inf(double a, curandState_t* random_state) {
 
 /* Exponential rejection sampling (a,b) */
 __device__ double ers_a_b(double a, double b, curandState_t* random_state) {
-  const double ainv = 1.0 / a;
+  double ainv = 1.0 / a;
   double x, rho;
   do {
     x = rexp_device(ainv, random_state) + a;
@@ -187,11 +187,11 @@ __device__ double hnrs_a_b(double a, double b, curandState_t* random_state) {
 /* Uniform rejection sampling */
 __device__ double urs_a_b(double a, double b, curandState_t* random_state) {
   
-  const double phi_a = dnorm_device(a, 0, 1);
+  double phi_a = dnorm_device(a, 0, 1);
   double x = 0.0, u = 0.0;
 
   /* Upper bound of normal density on [a, b] */
-  const double ub = a < 0 && b > 0 ? M_1_SQRT_2PI : phi_a;
+  double ub = a < 0 && b > 0 ? M_1_SQRT_2PI : phi_a;
   do {
     x = runif_device(a, b, random_state);
   } while (runif_device(0, 1, random_state) * ub > dnorm_device(x, 0, 1));
@@ -201,7 +201,7 @@ __device__ double urs_a_b(double a, double b, curandState_t* random_state) {
 /* Truncated on the left  */
 __device__ double rtruncnorm_left(double a, double mean, double sd, 
                                   curandState_t* random_state) {
-  const double alpha = (a - mean) / sd;
+  double alpha = (a - mean) / sd;
   if (alpha < T4) {
     return mean + sd * nrs_a_inf(alpha, random_state);
   } else {
@@ -212,17 +212,17 @@ __device__ double rtruncnorm_left(double a, double mean, double sd,
 /* Truncated on the right */
 __device__ double rtruncnorm_right(double b, double mean, double sd, 
                                    curandState_t* random_state) {
-  const double beta = (b - mean) / sd;
+  double beta = (b - mean) / sd;
   return mean - sd * rtruncnorm_left(-beta, 0.0, 1.0, random_state);
 }
 
 /* General case */
 __device__ double rtruncnorm_general(double a, double b, double mean, double sd,
                                      curandState_t* random_state) {
-  const double alpha = (a - mean) / sd;
-  const double beta = (b - mean) / sd;
-  const double phi_a = dnorm_device(alpha, 0.0, 1.0);
-  const double phi_b = dnorm_device(beta, 0.0, 1.0);
+  double alpha = (a - mean) / sd;
+  double beta = (b - mean) / sd;
+  double phi_a = dnorm_device(alpha, 0.0, 1.0);
+  double phi_b = dnorm_device(beta, 0.0, 1.0);
   if (alpha <= 0 && 0 <= beta) { 
     if (phi_a <= T2 || phi_b <= T1) {  
       return mean + sd * nrs_a_b(alpha, beta, random_state);
@@ -260,8 +260,8 @@ __device__ double rtruncnorm_general(double a, double b, double mean, double sd,
 __device__ double rtruncnorm_device(double a, double b, double mean, double sd,
                                     curandState_t* random_state) {
 
-  const int a_finite = (a == -DBL_MAX) ? 0 : 1;
-  const int b_finite = (b == DBL_MAX) ? 0 : 1;
+  int a_finite = (a == -DBL_MAX) ? 0 : 1;
+  int b_finite = (b == DBL_MAX) ? 0 : 1;
 
   if (a_finite && b_finite) {
     return rtruncnorm_general(a, b, mean, sd, random_state);
@@ -462,6 +462,12 @@ __device__ void inverse(Rvar matrix_arg,
   }
   
 }
+
+
+/*
+ * Solve the symmetric eigenproblem using reduction to tridiagonal form
+ * followed by the divide and conquer algorithm
+ */
 
 
 /*
@@ -689,6 +695,476 @@ __device__ void householder_reduction(Rvar matrix_arg, double* shared_arr,
 }
 
 
+/* Secular function used to find eigenvalues of Diagonal + rank1 update matrix */
+__device__ double secular_fx(double x, double* w, int start, int stop,
+                             double* cur_eigens, int sign_rho) {
+  double sum = sign_rho;
+  for (int i = start; i < stop; i++) {
+    sum += (w[i] * w[i]) / (cur_eigens[i] - x);
+  }
+  return sum;
+}
+
+/* sign function */
+__device__ double sign(double n) {
+  return n > 0 ? 1 : -1;
+}
+
+
+/*
+ * Solves the eigenproblem of a diagonal matrix with a rank one update using bisection to
+ * find the roots of the secular equation for lambda_i between diagonal elements.  The 
+ * calculated eigenvalues will be stored in gpu_mem.gpu_eigenvalues, while the calculated
+ * eigenvectors of the rank1 updated matrix are stored in gpu_mem.gpu_Qprime.
+ */
+
+__device__ void solve_rank1_update(int grid_index, int thread_index, int grid_size, 
+                                   int mat_dim, double* off_diag_eles, double* v, 
+                                   int merge_size,
+                                   cooperative_groups::grid_group grid) {
+
+  int data_index = grid_index;
+  int row_index = data_index % mat_dim;
+  int col_index = data_index / mat_dim;
+  int data_size = mat_dim * mat_dim;
+  double* cur_eigens = gpu_mem.gpu_eigvalues;
+  
+  /* init matrix Qprime to identity matrix  */
+  while (data_index < data_size) {
+    if (row_index == col_index) {
+      gpu_mem.gpu_Qprime[data_index] = 1;
+    }
+    else {
+      gpu_mem.gpu_Qprime[data_index] = 0;
+    }
+    data_index += grid_size;
+  }
+  grid.sync();
+
+  /* Update v to w based on rho */
+  data_index = thread_index;
+  while (data_index < mat_dim) {
+    int block_sub_problem_offset = floor((float) (data_index / (merge_size * 2))) * 
+                                    (merge_size * 2);
+    int block_merge_index = block_sub_problem_offset + merge_size - 1;
+    int block_sign_rho = sign(off_diag_eles[block_merge_index]);
+
+    /* We now transform v to w such that rho = 1 for the matrix D - rho * v %*% t(v)  */
+    v[data_index] = block_sign_rho * sqrt(abs(off_diag_eles[block_merge_index])) * 
+                     v[data_index];
+
+    //printf("w %d: %lf\n", data_index, v[data_index]);
+    data_index += THREADS_PER_BLOCK;
+  }
+ 
+  /* Begin process to calculate lambda_i for each thread  */
+  int sub_problem_offset = floor((float) (grid_index / (merge_size * 2))) * (merge_size * 2);
+  int merge_index = min(sub_problem_offset + merge_size - 1, mat_dim - 1);
+  int sub_problem_end = min(sub_problem_offset + (2 * merge_size), mat_dim);
+  int sign_rho = sign(off_diag_eles[merge_index]);
+
+  /* Exclude cases where no calculation is needed for this thread until after bisection */
+  if (grid_index < mat_dim && merge_index < (mat_dim - 1) && 
+      off_diag_eles[merge_index] != 0) {
+
+    /* The calculated eigenvalue lambda_i for the appropriate level sub problem */
+    double lambda_i = 0;
+    
+    /* Precision used to calculate eigenvalues  */
+    double machine_prec = 1e-15;
+
+    /* Variables used in bisection  */
+    double x1 = -DBL_MAX;
+    double x2 = DBL_MAX;
+    double fx1 = 0;
+    double fx2 = 0;
+
+    /* Begin execution of finding secular roof for sub problem  */
+    if (sign_rho < 0) {
+      
+      /* Find the previous pole lambda_kprev such that lambda_i is between  */
+      /* the current diagonal value and lambda_kprev                        */
+      double lambda_kprev = -DBL_MAX;
+      double norm_w = 0;
+      for (int j = sub_problem_offset; j < sub_problem_end; j++) {
+        norm_w += cur_eigens[j] * cur_eigens[j];
+        if (cur_eigens[j] < cur_eigens[grid_index] && cur_eigens[j] > lambda_kprev)
+          lambda_kprev = cur_eigens[j];
+      }
+      
+      /* Suggested offset for when looking for root smaller than the smallest diagonal  */
+      if (lambda_kprev == -DBL_MAX) {
+        norm_w = sqrt(norm_w);
+        lambda_kprev = cur_eigens[grid_index] - norm_w;
+      }
+
+      /* Find the closest values (by specified precision) between the two poles of interest */
+      double closest_cur = cur_eigens[grid_index] - machine_prec;
+      double closest_prev = lambda_kprev + machine_prec;
+      double scaler = 1.0;
+
+      /* Precision is finite, may need to increase offset if current diagonal is large  */
+      while (closest_cur == cur_eigens[grid_index]) {
+        scaler *= 10.0;
+        closest_cur = cur_eigens[grid_index] - (machine_prec * scaler);
+      }
+      scaler = 1.0;
+      while (closest_prev == lambda_kprev) {
+        scaler *= 10;
+        closest_prev = cur_eigens[grid_index] + (machine_prec * scaler);
+      }
+
+      /* If the eigenvalue lies between the pole and closest machine value, take the pole */
+      /* to be the eigenvalue and the eigenvector is the unit vector at index i           */
+      fx2 = secular_fx(closest_cur, v, sub_problem_offset, sub_problem_end,
+                       cur_eigens, sign_rho);
+      fx1 = secular_fx(closest_prev, v, sub_problem_offset, sub_problem_end,
+                       cur_eigens, sign_rho);
+      if (fx2 < 0) {
+        lambda_i = cur_eigens[grid_index];
+      }
+      else if (fx1 > 0) {
+        lambda_i = lambda_kprev;
+      }
+      else {
+        x1 = closest_prev;
+        x2 = closest_cur;
+      }
+    }
+
+    /* Case where rho is positive */
+    else {
+
+      /* Repeat above code but with directionality switched, should probably be cleaned up  */
+      double lambda_knext = DBL_MAX;
+      double norm_w = 0;
+      for (int j = sub_problem_offset; j < sub_problem_end; j++) {
+        norm_w += cur_eigens[j] * cur_eigens[j];
+        if (cur_eigens[j] > cur_eigens[grid_index] && cur_eigens[j] < lambda_knext)
+          lambda_knext = cur_eigens[j];
+      }
+      if (lambda_knext == DBL_MAX) {
+        norm_w = sqrt(norm_w);
+        lambda_knext = cur_eigens[grid_index] + norm_w;      
+      }
+      double closest_cur = cur_eigens[grid_index] + machine_prec;
+      double closest_next = lambda_knext - machine_prec;
+      double scaler = 1.0;
+
+      while (closest_cur == cur_eigens[grid_index]) {
+        scaler *= 10.0;
+        closest_cur = cur_eigens[grid_index] + (machine_prec * scaler);
+      }
+      scaler = 1.0;
+      while (closest_next == lambda_knext) {
+        scaler *= 10.0;
+        closest_next = lambda_knext - (machine_prec * scaler);
+      }
+
+      fx1 = secular_fx(closest_cur, v, sub_problem_offset, sub_problem_end,
+                       cur_eigens, sign_rho);
+      fx2 = secular_fx(closest_next, v, sub_problem_offset, sub_problem_end,
+                       cur_eigens, sign_rho);
+      if (fx1 > 0) {
+        lambda_i = cur_eigens[grid_index];
+      }
+      else if (fx2 < 0) {
+        lambda_i = lambda_knext;
+      }
+      else {
+        x1 = closest_cur;
+        x2 = closest_next;
+      }
+    }
+
+    /* In case where root was taken to be one of the poles, no calculation needed  */
+    if (x1 != -DBL_MAX) {
+
+      /* Begin bisection code */
+      double xm = (x1 + x2) / 2;
+      int bisect_iter = 0;
+      double fxm = secular_fx(xm, v, sub_problem_offset, sub_problem_end,       
+                                cur_eigens, sign_rho);
+      while (x1 < xm && xm < x2 && bisect_iter < 500)  {
+        if (fxm == 0) 
+          break;
+
+        if (sign(fx1) != sign(fxm)) {
+          x2 = xm;
+        }
+        else {
+          x1 = xm;
+          fx1 = fxm;
+        }
+        xm = (x1 + x2) / 2;
+        fxm = secular_fx(xm, v, sub_problem_offset, sub_problem_end,
+                                cur_eigens, sign_rho);
+        bisect_iter++;
+      }
+      lambda_i = xm;
+    }
+
+    /* Store calculated eigenvalue global scratch memory  */
+    gpu_mem.gpu_scratch_memory[grid_index] = lambda_i;
+  }
+
+  /* No calculation needed case, simply use old eigenvalue  */
+  else if (grid_index < mat_dim) {
+    gpu_mem.gpu_scratch_memory[grid_index] = gpu_mem.gpu_eigvalues[grid_index];
+  }
+  grid.sync();
+  
+  /* Calculate gpu_Qprime for each merging subproblem */
+ 
+  /* The number of indices in Qprime that will be updated is based on merge_size  */
+  int full_problems = floor((float) (mat_dim / (2 * merge_size)));
+  int remaining_dim = mat_dim - (full_problems * (2 * merge_size));
+  int merge_data_size = (4 * merge_size * merge_size);
+  data_size = full_problems * merge_data_size + (remaining_dim * remaining_dim);
+  data_index = grid_index;
+  while (data_index < data_size) {
+
+    /* Index sub problem this thread is contributing to, each merged sub problem has  */
+    /* dimension of (2 * merge_size), thus there are (2 * merge_size)^2 elements      */
+    int sub_problem_index = floor((float) (data_index / merge_data_size));
+    
+    /* Init sub problem row and column indices  */
+    int sub_row_index = (data_index - (sub_problem_index * merge_data_size));
+    int sub_col_index = (data_index - (sub_problem_index * merge_data_size));
+
+    /* If we are at the last sub problem, it may not be "default" size  */
+    if (sub_problem_index != full_problems) {
+      sub_row_index %= (2 * merge_size);
+      sub_col_index /= (2 * merge_size);
+    }
+    else {
+      sub_row_index %= remaining_dim;
+      sub_col_index /= remaining_dim;
+    }
+    
+    /* Offset in 1 dimension  */
+    sub_problem_offset = sub_problem_index * (2 * merge_size);
+    int sub_problem_end = min(sub_problem_offset + (2 * merge_size), mat_dim);
+
+    int row_index = sub_row_index + sub_problem_offset;
+    int col_index = sub_col_index + sub_problem_offset;
+    
+    /* Eigenvalue that was calculated is stored at col_index of scratch memory  */
+    /* If calculated eigenvalue exists in previous eigenvalues (poles) do not   */
+    /* calculate and instead use the initialized unit vector in Qprime          */
+    int root_exists = 0;
+    for (int i = sub_problem_offset; i < sub_problem_end; i++) {
+      if (gpu_mem.gpu_scratch_memory[col_index] == cur_eigens[i])
+        root_exists = 1;
+    }
+    if (!root_exists) {
+      double vhat = (1 / (gpu_mem.gpu_scratch_memory[col_index] - 
+                          cur_eigens[row_index]) * 
+                     v[row_index]);
+      gpu_mem.gpu_Qprime[(col_index * mat_dim) + row_index] = vhat;
+    }
+
+    data_index += grid_size;
+  }
+  grid.sync();
+
+  /* Divide each vector vhat by norm(vhat) after initial calculation  */
+  if (grid_index < mat_dim) {
+    double vhat_norm = 0;
+    int sub_problem_index = floor((float) (grid_index / (2 * merge_size)));
+    sub_problem_offset = sub_problem_index * (2 * merge_size);
+    int upper_bound = min(sub_problem_offset + (2 * merge_size), mat_dim);
+    for (int i = sub_problem_offset; i < upper_bound; i++) {
+      vhat_norm += pow((gpu_mem.gpu_Qprime[(grid_index * mat_dim) + i]), 2);
+    }
+    vhat_norm = sqrt(vhat_norm);
+    for (int i = sub_problem_offset; i < upper_bound; i++) {
+      gpu_mem.gpu_Qprime[(grid_index * mat_dim) + i] /= vhat_norm;
+    }
+  }
+
+  /* Update eigenvalues */
+  if (grid_index < mat_dim) {
+    gpu_mem.gpu_eigvalues[grid_index] = gpu_mem.gpu_scratch_memory[grid_index];
+  }
+  grid.sync();
+  
+}
+
+
+/*
+ * Uses divide and conquer to solve symmetric tridiagonal eigenproblem, the eigenvalues
+ * are stored in gpu_mem.gpu_eigenvalues, the eigenvectors of the tridiagonal are stored
+ * in gpu_mem.gpu_eigenvectors, which can then be transformed with accumulated matrix Q
+ * from the cumulative householder reductions to retrieve original matrix eigenvectors
+ */
+
+__device__ void tri_eigen_divide_conquer(int grid_index, int thread_index, int grid_size,
+                                         int mat_dim, double* linalg_vec, double* shared_arr,
+                                         cooperative_groups::grid_group grid) {
+
+  
+  /* Init the diag elements of the matrix to gpu_mem.gpu_eigenvalues */
+  if (grid_index < mat_dim){ 
+    gpu_mem.gpu_eigvalues[grid_index] = gpu_mem.gpu_tridiagonal[(grid_index * mat_dim) + 
+                                                                 grid_index];
+  }
+
+  /* Init the off diag elements in linalg_vec which is __shared__ memory */
+  int data_index = thread_index;
+  while (data_index < mat_dim) {
+    linalg_vec[data_index] = gpu_mem.gpu_tridiagonal[((data_index + 1) * mat_dim) + 
+                                                     data_index];
+    data_index += THREADS_PER_BLOCK;
+  }
+  grid.sync();
+
+  /* Init the matrix that will hold sub problem eigenvectors as they are calculated */
+  data_index = grid_index;
+  int data_size = mat_dim * mat_dim;
+  while (data_index < data_size) {
+    int row_index = data_index % mat_dim;
+    int col_index = data_index / mat_dim;
+    if (row_index == col_index) {
+      gpu_mem.gpu_eigvectors[data_index] = 1;
+    }
+    else {
+      gpu_mem.gpu_eigvectors[data_index] = 0;
+    }
+    data_index += grid_size;
+  }
+
+  /* Subtract off diagaonal elements from all sub problem merging indices in two steps    */
+  /* to avoid conflicts, as most indices will have off diagonal elements subtracted twice */
+  if (grid_index < (mat_dim - 1)) {
+    if (grid_index % 2 == 0)
+      gpu_mem.gpu_eigvalues[grid_index] -= linalg_vec[grid_index];
+    else
+      gpu_mem.gpu_eigvalues[grid_index] -= linalg_vec[grid_index - 1];
+  }
+  grid.sync();
+
+  if (grid_index < (mat_dim - 1)) {
+    if (grid_index % 2 == 0 && (grid_index < (mat_dim -2)))
+      gpu_mem.gpu_eigvalues[grid_index + 1] -= linalg_vec[grid_index + 1];
+    else
+      gpu_mem.gpu_eigvalues[grid_index + 1] -= linalg_vec[grid_index];
+  }
+
+  /* Begin iterative process of combining sub problems  */
+  int merge_size = 1;
+  while (merge_size < mat_dim) {
+    
+    /* First create vector v from last row of Q1 and first row of Q2 for each sub problem */
+    data_index = thread_index;
+    while (data_index < mat_dim) {
+      int sub_problem_id = floor((float) data_index / merge_size);
+      int vertical_offset = sub_problem_id * merge_size;
+
+      /* Get last row */
+      if (sub_problem_id % 2 == 0)
+        vertical_offset += (merge_size - 1);
+
+      shared_arr[data_index] = gpu_mem.gpu_eigvectors[(data_index * mat_dim) + 
+                                                      min(vertical_offset, mat_dim)];
+      data_index += THREADS_PER_BLOCK;
+    }
+    __syncthreads();
+
+    /* Solve current level of sub problem */
+    solve_rank1_update(grid_index, thread_index, grid_size, mat_dim, linalg_vec, 
+                       shared_arr, merge_size, grid);
+
+    /* Update gpu_mem.gpu_eigenvectors by multiplying each block diagonal sub problem */
+    /* matrix of eigenvectors [Q1, Q2] %*% Qprime                                     */
+    int full_problems = floor((float) (mat_dim / (2 * merge_size)));
+    int remaining_dim = mat_dim - (full_problems * (2 * merge_size));
+    int merge_data_size = (4 * merge_size * merge_size);
+    int data_size = full_problems * merge_data_size + (remaining_dim * remaining_dim);
+    data_index = grid_index;
+    while (data_index < data_size) {
+
+      /* Index sub problem this thread is contributing to, each merged sub problem has  */
+      /* dimension of (2 * merge_size), thus there are (2 * merge_size)^2 elements      */
+      int sub_problem_index = floor((float) (data_index / merge_data_size));
+
+      /* Init sub problem row and column indices  */
+      int sub_row_index = (data_index - (sub_problem_index * merge_data_size));
+      int sub_col_index = (data_index - (sub_problem_index * merge_data_size));
+
+      /* If we are at the last sub problem, it may not be "default" size  */
+      if (sub_problem_index != full_problems) {
+        sub_row_index %= (2 * merge_size);
+        sub_col_index /= (2 * merge_size);
+      }
+      else {
+        sub_row_index %= remaining_dim;
+        sub_col_index /= remaining_dim;
+      }
+
+      /* Offset in 1 dimension  */
+      int sub_problem_offset = sub_problem_index * (2 * merge_size);
+
+      int row_index = sub_row_index + sub_problem_offset;
+      int col_index = sub_col_index + sub_problem_offset;
+
+      /* Take matrix product of current index using only the merge_data_size sub matrix */
+      int upper_bound = min(sub_problem_offset + (2 * merge_size), mat_dim);
+      double acc = 0.0;
+      for (int i = sub_problem_offset; i < upper_bound; i++) {
+        acc += (gpu_mem.gpu_eigvectors[(i * mat_dim) + row_index] * 
+                gpu_mem.gpu_Qprime[(col_index * mat_dim) + i]);
+      }
+      
+      /* Store in scratch memory  */
+      gpu_mem.gpu_scratch_memory[(col_index * mat_dim) + row_index] = acc;
+
+      data_index += grid_size;
+    }
+    grid.sync();
+
+    /* Copy scratch memory back to gpu_eigvectors */
+    /* Lots of repeated code here, should be cleaned up */
+    data_index = grid_index;
+    while (data_index < data_size) {
+
+      /* Index sub problem this thread is contributing to, each merged sub problem has  */
+      /* dimension of (2 * merge_size), thus there are (2 * merge_size)^2 elements      */
+      int sub_problem_index = floor((float) (data_index / merge_data_size));
+
+      /* Init sub problem row and column indices  */
+      int sub_row_index = (data_index - (sub_problem_index * merge_data_size));
+      int sub_col_index = (data_index - (sub_problem_index * merge_data_size));
+
+      /* If we are at the last sub problem, it may not be "default" size  */
+      if (sub_problem_index != full_problems) {
+        sub_row_index %= (2 * merge_size);
+        sub_col_index /= (2 * merge_size);
+      }
+      else {
+        sub_row_index %= remaining_dim;
+        sub_col_index /= remaining_dim;
+      }
+
+      /* Offset in 1 dimension  */
+      int sub_problem_offset = sub_problem_index * (2 * merge_size);
+
+      int row_index = sub_row_index + sub_problem_offset;
+      int col_index = sub_col_index + sub_problem_offset;
+
+      gpu_mem.gpu_eigvectors[(col_index * mat_dim) + row_index] = 
+        gpu_mem.gpu_scratch_memory[(col_index * mat_dim) + row_index];
+
+      data_index += grid_size;
+    }
+
+    /* Increment the merging size */
+    merge_size *= 2;
+  }
+
+}
+
+
 /*
  * Top level function to sample from multivariate normal distribution 
  */
@@ -705,6 +1181,71 @@ __device__ void mvrnorm_device(double* means, Rvar covar_matrix, double* result,
   /* Step 1 is to reduce matrix to tridiagonal form and save accumlated matrix Q  */
   householder_reduction(covar_matrix, shared_arr, linalg_vec, grid_size,
                         grid_index, thread_index, evals_per_thread, grid);
+
+  /* Step 2 is to solve the symmetric tridiagonal eigenproblem with divide and conquer  */
+  tri_eigen_divide_conquer(grid_index, thread_index, grid_size, covar_matrix.rdim, 
+                           linalg_vec, shared_arr, grid);
+
+  /* Convert eigenvecs of tridiagonal matrix to original eigenvecs with accumulated */
+  /* Householder transformations stored in gpu_mem.gpu_Q                            */
+  Rvar householder_Q = {
+    .data = gpu_mem.gpu_Q,
+    .len = covar_matrix.len,
+    .rdim = covar_matrix.rdim,
+    .cdim = covar_matrix.cdim
+  };
+  Rvar c_eigvecs = {
+    .data = gpu_mem.gpu_eigvectors,
+    .len = covar_matrix.len,
+    .rdim = covar_matrix.rdim,
+    .cdim = covar_matrix.cdim
+  };
+
+  /* Perform matrix multiplication on accumulated matrix Q to eigenvectors of the   */
+  /* tridiagonal matrix, use global scratch memory as intermediate storage          */
+  int data_index = grid_index;
+  while (data_index < covar_matrix.len) {
+    gpu_mem.gpu_scratch_memory[data_index] = mat_mul(householder_Q, c_eigvecs, data_index);
+    data_index += grid_size;
+  }
+  grid.sync();
+  data_index = grid_index;
+  while (data_index < covar_matrix.len) {
+    gpu_mem.gpu_eigvectors[data_index] = gpu_mem.gpu_scratch_memory[data_index];
+    data_index += grid_size;
+  }
+
+  /* Multiply eigenvectors by sqrt of their eigenvalues */
+  data_index = grid_index;
+  int col_index = data_index / covar_matrix.rdim;
+  while (data_index < covar_matrix.len) {
+    gpu_mem.gpu_eigvectors[data_index] *= sqrt(gpu_mem.gpu_eigvalues[col_index]);
+    data_index += grid_size;
+    col_index = data_index / covar_matrix.rdim;
+  }
+
+  /* Get random sample X, currently constrained to 1 sample from mvrnorm  */
+  int data_size = covar_matrix.rdim;
+  data_index = grid_index;
+  while (data_index < covar_matrix.len) {
+    gpu_mem.gpu_scratch_memory[data_index] = curand_normal_double(random_state);    
+    data_index += grid_size;
+  }
+
+  /* Mutiply eigvectors %*% t(X)  */
+  Rvar tX = {
+    .data = gpu_mem.gpu_scratch_memory,
+    .len = covar_matrix.rdim,
+    .rdim = covar_matrix.rdim,
+    .cdim = 1 /* artificial constraint  */
+  };
+
+  /* Copy sampled value to result */
+  data_index = grid_index;
+  while (data_index < covar_matrix.rdim) {
+    result[data_index] = mat_mul(c_eigvecs, tX, data_index) + means[data_index];
+    data_index += grid_size;
+  }
 
 }
 
@@ -940,13 +1481,15 @@ void allocate_background_mem(int max_eval_size, int linalg_dim){
   /* Initialize pointers for global background memory used in linear algebra  */
   double* g_Q = NULL;
   double* g_tridiagonal = NULL;
-  double* g_eigvecs = NULL;
-  double* g_eigvals = NULL;
+  double* g_eigvalues = NULL;
+  double* g_eigvectors = NULL;
+  double* g_Qprime = NULL;
   if (linalg_dim > 0) {
     g_Q = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
     g_tridiagonal = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-    g_eigvecs = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
-    g_eigvals = (double*) malloc_device(linalg_dim * sizeof(double));
+    g_eigvalues = (double*) malloc_device(linalg_dim * sizeof(double));
+    g_eigvectors = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
+    g_Qprime = (double*) malloc_device(pow(linalg_dim, 2) * sizeof(double));
   }
 
   /* Copy pointers to __constant__ memory on device for fast global access  */
@@ -954,8 +1497,9 @@ void allocate_background_mem(int max_eval_size, int linalg_dim){
     .gpu_scratch_memory = g_scratch_memory,
     .gpu_tridiagonal = g_tridiagonal,
     .gpu_Q = g_Q,
-    .gpu_eigvecs = g_eigvecs,
-    .gpu_eigvals = g_eigvals
+    .gpu_eigvalues = g_eigvalues,
+    .gpu_eigvectors = g_eigvectors,
+    .gpu_Qprime = g_Qprime,
   };
 
   cudaError_t err = cudaMemcpyToSymbol(gpu_mem, &g_mem, sizeof(gpu_store));
@@ -989,8 +1533,9 @@ void free_background_mem() {
   free_device(g_mem.gpu_scratch_memory);
   free_device(g_mem.gpu_Q);
   free_device(g_mem.gpu_tridiagonal);
-  free_device(g_mem.gpu_eigvecs);
-  free_device(g_mem.gpu_eigvals);
+  free_device(g_mem.gpu_eigvectors);
+  free_device(g_mem.gpu_eigvalues);
+  free_device(g_mem.gpu_Qprime);
 }
 
 

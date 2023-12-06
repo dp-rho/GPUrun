@@ -3,7 +3,7 @@ require(truncnorm)
 require(devtools)
 
 PSEUDO_NAME <- "buildDyn"
-INSTALL_LOC <- "installed_temp"
+INSTALL_LOC <- "compiled_commands"
 RLIBS <- "libs"
 
 #' @title Parse R expressions into parallel CUDA code and compile
