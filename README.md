@@ -20,7 +20,7 @@ GPUrun is designed for high performance execution of R expressions which operate
 - Range function, `:`
 - Matrix multiplication and matrix transpose, `%*%, t()`
 - Matrix inverse, `solve()`, however this function is only implemented for finding the inverse of the first argument, not for the general case of a %*% x = b.
-- Random sampling, `rnorm(), runif(), rtruncnorm(), mvrnorm()`, all arguments must be specificed explicitly, default arguments not currently implemented.
+- Random sampling, `rnorm(), runif(), rtruncnorm(), mvrnorm()`, all arguments must be specificed explicitly, default arguments not currently implemented, and mvrnorm is artificially constrained for simplicity to n=1 sample for each call.
 - Elementwise if/else, `ifelse()`.
 - Indexing for both reading and writing in up to two dimensions, `[]`, note that only global variables can be indexed, not general expressions, so something like this is not allowed `y <- (x + 3)[1]`
 - For loop iteration, `for (_ in _)`
