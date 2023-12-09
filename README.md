@@ -46,7 +46,7 @@ my_expr <- substitute(
 # compile_commands always expects a list of expressions, even with only one expression
 compiled_expr_ex <- GPUrun::compile_commands(list(my_expr))
 
-# Even iterater variable must be initialized with proper dimension,
+# Even the iteratorr variable must be initialized with proper dimension,
 # however, the data does not matter as it is immediately overwritten
 # during the execution of the for loop, as it would be in native R
 i <- 0
