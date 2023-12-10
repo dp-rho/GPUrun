@@ -67,8 +67,8 @@ The one time compile cost is signficant, however, we can use the same compiled o
 # Use different number of iterations
 niters <- 500000
 
-# Use different initial values in vector
-my_vec <- 1:100000
+# Use different initial values in vector, and different sized vector
+my_vec <- 1:500000
 
 # Call the previously compiled commands
 GPUrun::run_commands(compiled_expr_ex, environment())
