@@ -24,7 +24,7 @@ GPUrun is designed for high performance execution of R expressions which operate
 - Matrix inverse, `solve()`, however this function is only implemented for finding the inverse of the first argument, not for the general case of a %*% x = b.
 - Random sampling, `rnorm(), runif(), rtruncnorm(), mvrnorm()`, all arguments must be specificed explicitly, default arguments not currently implemented, and mvrnorm is artificially constrained for simplicity to n=1 sample for each call.
 - Elementwise if/else, `ifelse()`.
-- Indexing for both reading and writing (i.e., assignment) in up to two dimensions, `[]`, note that only defined R variables can be indexed, not general expressions, so something like this is not allowed `y <- (x + 3)[1]`
+- Indexing for both reading and writing (i.e., assignment) in up to two dimensions, `[]`, note that only defined R variables can be indexed, not general expressions, so something like this is not allowed `y <- (x + 3)[1]`, where as this would be `y[1:2, 5:7] <- x[2:3, 1:3]`
 - For loop iteration, `for (_ in _)`
 
 ### Compiling process
@@ -34,7 +34,7 @@ The compiling process makes use of the pre-existing Rcpp package building functi
 CUDA is supported on Windows, so why isn't it supported in GPUrun?  Unfortunately, the NVIDIA distributed CUDA compiler (nvcc) is built on MSVC when using Windows, where as it is built on g++ when using Linux.  Rcpp package building uses g++, and objects compiled with MSVC and g++ cannot be linked.  It is theoretically possible, but beyond the scope of this project, to instead rewrite the Rcpp package building process to use MSVC when compiling on Windows.
 
 ## Examples
-In general, it is only helpful to execute R commands using GPUrun if they are both notably parallel in nature and computation intensive.  The overhead cost of calling the .so lib, parsing dimensions and copying data to the GPU makes native R execution far faster in the cases of simple commands, and code which is highly sequential in nature will be slower in all cases if passed to GPUrun.  The following is a simple example of compiling and executing code using GPUrun which will likely see performance improvements during the execution step of the code.
+In general, it is only helpful to execute R commands using GPUrun if they are both notably parallel in nature and computation intensive.  The overhead cost of parsing dimensions and copying data to the GPU makes native R execution far faster in the cases of simple commands, and code which is highly sequential in nature will be slower in all cases if passed to GPUrun.  The following is a simple example of compiling and executing code using GPUrun which will likely see performance improvements during the execution step of the code.
 
 ```
 # The native R function substitute converts R code into an expression object
