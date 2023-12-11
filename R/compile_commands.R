@@ -25,7 +25,7 @@ RLIBS <- "libs"
 #' commands_object <- compile_commands(expr_ls)
 #' 
 #' run_commands(commands_object, environment())
-compile_commands <- function(expr_ls) {
+compile_commands <- function(expr_ls, quiet=TRUE) {
 
   # get the list of variable names in an ordered list
   # to allow machine generated code to access them by index
@@ -51,7 +51,7 @@ compile_commands <- function(expr_ls) {
   # use devtools to build and install the pseudo package package
   # in order to generate a portable binary .so object
   devtools::install(pkg = pseudo_pkg_dir,
-                    quiet = TRUE,
+                    quiet = quiet,
                     args = paste0("--library=", install_loc))
   
   # increment the key values in package meta files
