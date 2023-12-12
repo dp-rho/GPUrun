@@ -5,7 +5,7 @@ Rcpp package that utilizes CUDA to enable fully out of the box GPU computation o
 GPUrun is designed for high performance execution of R expressions which operate on strictly numerical data of up to two dimensions.  Only functions explicitly listed here can be included in these expressions.  It is relatively easy to implement any new highly parallel function. Implementing functions which are inherently sequential is possible, but it cannot be done efficiently, as all computation is executed on the GPU.  In general, expressions compiled and executed by GPUrun should mimic the functionality of native R implementations, with some notable restrictions.
 
 ### Restrictions
-- Variables and expressions cannot change size during compiled execution.  Dimensions of expressions, and by extension the rules for computation, are parsed only once by the CPU before the CUDA kernel is called. The parsing of dimensions and allocation of data is generally not parallel in nature and can be costly, so significant performance gains can be made by tightly controlling memory usage and focusing on parallel computation.  This means something like the following expression is not allowed.
+- Variables and expressions cannot change size *during* compiled execution.  Dimensions of expressions, and by extension the rules for computation, are parsed only once by the CPU before the CUDA kernel is called. The parsing of dimensions and allocation of data is generally not parallel in nature and can be costly, so significant performance gains can be made by tightly controlling memory usage and focusing on parallel computation.  This means something like the following expression is not allowed.
 
     `for (i in 1:10) my_vec <- 1:i`
   
@@ -22,10 +22,10 @@ GPUrun is designed for high performance execution of R expressions which operate
 - Matrix creation, i.e., explicitly converting a vector or matrix to a new matrix with specified dimensions, `matrix()`, both ncol and nrow must be explicitly specified, byrow and dimnames are not supported.
 - Matrix multiplication and matrix transpose, `%*%, t()`
 - Matrix inverse, `solve()`, however this function is only implemented for finding the inverse of the first argument, not for the general case of a %*% x = b.
-- Random sampling, `rnorm(), runif(), rtruncnorm(), mvrnorm()`, all arguments must be specificed explicitly, default arguments not currently implemented, and mvrnorm is artificially constrained for simplicity to n=1 sample for each call.
+- Random sampling, `rnorm(), runif(), rtruncnorm(), mvrnorm()`, all arguments must be specificed explicitly, default arguments not currently implemented, tol, empirical, EISPACK not implemented for mvrnorm, and mvrnorm is artificially constrained for simplicity to n=1 sample for each call.
 - Elementwise if/else, `ifelse()`.
 - Indexing for both reading and writing (i.e., assignment) in up to two dimensions, `[]`, note that only defined R variables can be indexed, not general expressions, so something like this is not allowed `y <- (x + 3)[1]`, where as this would be `y[1:2, 5:7] <- x[2:3, 1:3]`
-- For loop iteration, `for (_ in _)`
+- For loop iteration, `for (_ in _) _`
 
 ### Compiling process
 The compiling process makes use of the pre-existing Rcpp package building functionality.  Rcpp provides a portable and clean interface for compiling .so libs and linking them to an R package.  The compiled functions which have been registered by the successfully built package can then be executed with the `.Call()` function, although Rcpp packages will hide this functionality behind wrapper R functions that handle the `.Call()` interface under the hood.  GPUrun makes use of devtools in combination with Rcpp to build pseudo packages inside the compile/installed_libs directory which are then accessed with machine generated keys.  This method brings with it some overhead in package structure that is unnecessary in exchange for a well maintained and portable method of compiling .cpp and .cu files and linking the resuting .so libs with R sessions.
@@ -46,7 +46,7 @@ my_expr <- substitute(
 # compile_commands always expects a list of expressions, even with only one expression
 compiled_expr_ex <- GPUrun::compile_commands(list(my_expr))
 
-# Even the iteratorr variable must be initialized with proper dimension,
+# Even the iterator variable must be initialized with proper dimension,
 # however, the data does not matter as it is immediately overwritten
 # during the execution of the for loop, as it would be in native R
 i <- 0
