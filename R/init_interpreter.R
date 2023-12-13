@@ -21,15 +21,18 @@ g_expr_env <- new.env(parent = .GlobalEnv)
 g_int_eval_env <- new.env(parent = .GlobalEnv)
 g_linalg_env <- new.env(parent = .GlobalEnv)
 
-# Currently g_linalg_env is used only to track the largest dimension
-# needed for a linalg function, as linalg functions require additional
-# background memory
-assign("linalg_dims", c(), envir = g_linalg_env)
-
 
 # The functions used to write the stored dimensional information into the  
 # initialize functions in compiled code
 WRITE_FUNS <- list(
+  
+  # linear algebra case
+  'linalg' = function(
+    linalg_dims
+  ) {
+    linalg_args <- paste(linalg_dims, collapse = ", ")
+    return(paste0("int linalg_dims[] = {", linalg_args, "};"))
+  },
   
   # For loop case
   'loop' =  function(
@@ -89,6 +92,9 @@ UPDATE_EXPRS <- list(
 # The initial empty storage structures used to store dimensional information
 INIT_STORAGE <- list(
   
+  # linear algebra case
+  'linalg_dims' = c(),
+  
   # For loop case
   'loop' = rep("EMPTY", MAX_LOOPS),
   
@@ -97,8 +103,8 @@ INIT_STORAGE <- list(
   
   # Intermediate evaluation Rvar case
   'int_eval' = replicate(MAX_INT_EVAL, 
-                               setNames(vector("list", length(DIMS)), DIMS), 
-                               simplify = FALSE)
+                         setNames(vector("list", length(DIMS)), DIMS), 
+                         simplify = FALSE)
 )
 
 
@@ -119,6 +125,9 @@ COUNT_VARS <- list(
 # The compiled code flag ids for specified dimensional information
 FLAG_STRS <- list(
   
+  # Linear algebra case
+  'linalg' = 'Lin.Alg',
+  
   # For loop case
   'loop' = "Iter.lens",
   
@@ -132,6 +141,9 @@ FLAG_STRS <- list(
 
 # The environments themselves matched by environment key
 ENVS <- list(
+  
+  # linear algebra case
+  'linalg' = g_linalg_env,
   
   # For loop case
   'loop' = g_loop_env,
@@ -165,7 +177,7 @@ ENVS <- list(
 #' init_interpreter(var_names, env_to_init)
 init_interpreter <- function(
     var_names,
-    env_key = c('loop', 'assign', 'int_eval')
+    env_key = c('linalg', 'loop', 'assign', 'int_eval')
 ) {
   
   # Match args

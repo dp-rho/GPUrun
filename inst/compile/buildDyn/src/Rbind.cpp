@@ -20,8 +20,6 @@ int g_evals_per_thread[MAX_EXPRS];
 int g_expr_count = 0;
 
 
-
-
 /* 
  * Binds the abstracted information of an R object into a dynamically 
  * allocated Cpp structure with memory that can be accessed by the GPU.

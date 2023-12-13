@@ -41,7 +41,7 @@ interpreter <- function(expr_ls, var_names) {
 
   # Initialize globally tracked interpreter variables for storing and 
   # later writing dimensional information
-  lapply(c('loop', 'assign', 'int_eval'), init_interpreter, 
+  lapply(c('linalg', 'loop', 'assign', 'int_eval'), init_interpreter, 
          var_names = var_names)
   
   # Write the parsed expressions to fill in the kernel code
@@ -55,24 +55,7 @@ interpreter <- function(expr_ls, var_names) {
   
   post_kernel_lines <- kernel_lines[line_indices$end:length(kernel_lines)]
   
-  # Write linear algebra dimension information for memory allocation
-  post_kernel_lines <- write_linalg_dims(post_kernel_lines)
-  
-  # Write the dimensions of the intermediate evaluation Rvar structures to the
-  # compiled initialization function in kernel.cu called initialize_int_evals()
-  post_kernel_lines <- write_parsed_dimensions(post_kernel_lines, g_int_eval_env)
-  post_kernel_lines <- replace_gpu_mem_access(post_kernel_lines, "Int.evals", "Int.mem")
-  
-  # Write the lengths of loop iterations to the compiled initialization function
-  # in kernel.cu called initialize_iter_lens()
-  post_kernel_lines <- write_parsed_dimensions(post_kernel_lines, g_loop_env)
-  post_kernel_lines <- replace_gpu_mem_access(post_kernel_lines, "Iter.lens", "Iter.mem")
-  
-  # Write the expression lengths and by extension the number of evaluations per 
-  # thread to the compiled initialization function in kernel.cu called
-  # initialize_expr_lens()
-  post_kernel_lines <- write_parsed_dimensions(post_kernel_lines, g_expr_env)
-  post_kernel_lines <- replace_gpu_mem_access(post_kernel_lines, "Expr.lens", "Expr.mem")
+  post_kernel_lines <- write_dims_to_kernel(post_kernel_lines)
 
   # Combine all lines to write to output
   lines_to_write <- c(lines_to_write, post_kernel_lines)

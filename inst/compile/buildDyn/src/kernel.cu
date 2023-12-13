@@ -1185,7 +1185,7 @@ __device__ void mvrnorm_device(double* means, Rvar covar_matrix, double* result,
   /* Step 2 is to solve the symmetric tridiagonal eigenproblem with divide and conquer  */
   tri_eigen_divide_conquer(grid_index, thread_index, grid_size, covar_matrix.rdim, 
                            linalg_vec, shared_arr, grid);
-
+  //return;
   /* Convert eigenvecs of tridiagonal matrix to original eigenvecs with accumulated */
   /* Householder transformations stored in gpu_mem.gpu_Q                            */
   Rvar householder_Q = {
@@ -1214,6 +1214,23 @@ __device__ void mvrnorm_device(double* means, Rvar covar_matrix, double* result,
     gpu_mem.gpu_eigvectors[data_index] = gpu_mem.gpu_scratch_memory[data_index];
     data_index += grid_size;
   }
+ 
+  /*if (grid_index == 0) {
+    for (int i = 0; i < covar_matrix.rdim; i++) {
+      printf("%.10lf ", gpu_mem.gpu_eigvalues[i]);
+    }
+    printf("\n -------- \n");
+
+    for (int i = 0; i < covar_matrix.rdim; i++) {
+      for (int j = 0; j < covar_matrix.rdim; j++) {
+        printf("%.10lf ", gpu_mem.gpu_eigvectors[(j * covar_matrix.rdim) + i]);
+      }
+      printf("\n");
+    }
+  }
+  grid.sync();
+  return; */
+ 
 
   /* Multiply eigenvectors by sqrt of their eigenvalues */
   data_index = grid_index;
@@ -1227,7 +1244,7 @@ __device__ void mvrnorm_device(double* means, Rvar covar_matrix, double* result,
   /* Get random sample X, currently constrained to 1 sample from mvrnorm  */
   int data_size = covar_matrix.rdim;
   data_index = grid_index;
-  while (data_index < covar_matrix.len) {
+  while (data_index < covar_matrix.rdim) {
     gpu_mem.gpu_scratch_memory[data_index] = curand_normal_double(random_state);    
     data_index += grid_size;
   }
@@ -1265,7 +1282,7 @@ void kernel(int grid_size, unsigned long long random_seed)
   /* Linear algebra __shared__ storage, due to hardware this is limited */
   /* Only necessary when more than one vector must be stored for linear */
   /* algebra functions such as reduction to tridiagonal form            */
-  __shared__ double linalg_vec[MAX_LINALG_DIM];
+  double* linalg_vec = shared_arr + (THREADS_PER_BLOCK * MAX_EVALS_PER_THREAD / 2);
 
   /* The indices that identify both thread index (repeated over blocks) */
   /* and the unique grid index that each thread posseses                */
@@ -1337,7 +1354,9 @@ void call_device() {
   /* Retrieve random seed from R  */
   unsigned long long random_seed = 420;
 
-  int linalg_dims[] = {/* R::linalg_dim */};
+  // [[Lin.Alg::start]]
+  int linalg_dims[] = {/* R::linalg_dims */};
+  // [[Lin.Alg::end]]
 
   int linalg_dim = *(std::max_element(linalg_dims, 
                                       linalg_dims + (sizeof(linalg_dims) / sizeof(int))));
@@ -1378,6 +1397,7 @@ void call_device() {
 
   /* Clean up memory from intermediate evaluations on GPU */
   free_background_mem();
+
 }
 
 
@@ -1474,9 +1494,7 @@ void allocate_background_mem(int max_eval_size, int linalg_dim){
   /* Allocate global memory used for intermediate evaluations, the size required is */
   /* the maximum between the largest evaluations needed for any expression and the  */
   /* matrix size of linear algebra functions called                                 */
-  double* g_scratch_memory = (double*) malloc_device(max(max_eval_size, 
-                                                         (int) pow(linalg_dim, 2)) * 
-                                                     sizeof(double));
+  double* g_scratch_memory = (double*) malloc_device(max_eval_size * sizeof(double));
 
   /* Initialize pointers for global background memory used in linear algebra  */
   double* g_Q = NULL;
@@ -1531,11 +1549,16 @@ void free_int_evals() {
 void free_background_mem() {
   free_int_evals();
   free_device(g_mem.gpu_scratch_memory);
-  free_device(g_mem.gpu_Q);
-  free_device(g_mem.gpu_tridiagonal);
-  free_device(g_mem.gpu_eigvectors);
-  free_device(g_mem.gpu_eigvalues);
-  free_device(g_mem.gpu_Qprime);
+  if (g_mem.gpu_Q) 
+    free_device(g_mem.gpu_Q);
+  if (g_mem.gpu_tridiagonal)
+    free_device(g_mem.gpu_tridiagonal);
+  if (g_mem.gpu_eigvectors)
+    free_device(g_mem.gpu_eigvectors);
+  if (g_mem.gpu_eigvalues)
+    free_device(g_mem.gpu_eigvalues);
+  if (g_mem.gpu_Qprime)
+    free_device(g_mem.gpu_Qprime);
 }
 
 
