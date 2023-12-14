@@ -1,7 +1,3 @@
-require(Rcpp)
-require(truncnorm)
-require(devtools)
-
 PSEUDO_NAME <- "buildDyn"
 INSTALL_LOC <- "compiled_commands"
 RLIBS <- "libs"
@@ -26,6 +22,13 @@ RLIBS <- "libs"
 #' 
 #' run_commands(commands_object, environment())
 compile_commands <- function(expr_ls, quiet=TRUE) {
+  
+  # Libraries which define functions that are implemented in GPUrun
+  # or are required to install the .so libs
+  library(truncnorm)
+  library(MASS)
+  library(usethis)
+  library(devtools)
 
   # get the list of variable names in an ordered list
   # to allow machine generated code to access them by index

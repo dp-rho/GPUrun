@@ -738,6 +738,8 @@ __device__ void solve_rank1_update(int grid_index, int thread_index, int grid_si
       gpu_mem.gpu_Qprime[data_index] = 0;
     }
     data_index += grid_size;
+    row_index = data_index % mat_dim;
+    col_index = data_index / mat_dim;
   }
   grid.sync();
 
@@ -753,7 +755,6 @@ __device__ void solve_rank1_update(int grid_index, int thread_index, int grid_si
     v[data_index] = block_sign_rho * sqrt(abs(off_diag_eles[block_merge_index])) * 
                      v[data_index];
 
-    //printf("w %d: %lf\n", data_index, v[data_index]);
     data_index += THREADS_PER_BLOCK;
   }
  
@@ -958,6 +959,7 @@ __device__ void solve_rank1_update(int grid_index, int thread_index, int grid_si
         root_exists = 1;
     }
     if (!root_exists) {
+ 
       double vhat = (1 / (gpu_mem.gpu_scratch_memory[col_index] - 
                           cur_eigens[row_index]) * 
                      v[row_index]);
@@ -975,7 +977,7 @@ __device__ void solve_rank1_update(int grid_index, int thread_index, int grid_si
     sub_problem_offset = sub_problem_index * (2 * merge_size);
     int upper_bound = min(sub_problem_offset + (2 * merge_size), mat_dim);
     for (int i = sub_problem_offset; i < upper_bound; i++) {
-      vhat_norm += pow((gpu_mem.gpu_Qprime[(grid_index * mat_dim) + i]), 2);
+     vhat_norm += pow((gpu_mem.gpu_Qprime[(grid_index * mat_dim) + i]), 2);
     }
     vhat_norm = sqrt(vhat_norm);
     for (int i = sub_problem_offset; i < upper_bound; i++) {
@@ -1062,11 +1064,12 @@ __device__ void tri_eigen_divide_conquer(int grid_index, int thread_index, int g
       int vertical_offset = sub_problem_id * merge_size;
 
       /* Get last row */
-      if (sub_problem_id % 2 == 0)
+      if (sub_problem_id % 2 == 0) {
         vertical_offset += (merge_size - 1);
+      }
 
       shared_arr[data_index] = gpu_mem.gpu_eigvectors[(data_index * mat_dim) + 
-                                                      min(vertical_offset, mat_dim)];
+                                                      min(vertical_offset, (mat_dim - 1))];
       data_index += THREADS_PER_BLOCK;
     }
     __syncthreads();
@@ -1115,7 +1118,7 @@ __device__ void tri_eigen_divide_conquer(int grid_index, int thread_index, int g
         acc += (gpu_mem.gpu_eigvectors[(i * mat_dim) + row_index] * 
                 gpu_mem.gpu_Qprime[(col_index * mat_dim) + i]);
       }
-      
+   
       /* Store in scratch memory  */
       gpu_mem.gpu_scratch_memory[(col_index * mat_dim) + row_index] = acc;
 
@@ -1160,6 +1163,7 @@ __device__ void tri_eigen_divide_conquer(int grid_index, int thread_index, int g
 
     /* Increment the merging size */
     merge_size *= 2;
+ 
   }
 
 }
@@ -1215,23 +1219,6 @@ __device__ void mvrnorm_device(double* means, Rvar covar_matrix, double* result,
     data_index += grid_size;
   }
  
-  /*if (grid_index == 0) {
-    for (int i = 0; i < covar_matrix.rdim; i++) {
-      printf("%.10lf ", gpu_mem.gpu_eigvalues[i]);
-    }
-    printf("\n -------- \n");
-
-    for (int i = 0; i < covar_matrix.rdim; i++) {
-      for (int j = 0; j < covar_matrix.rdim; j++) {
-        printf("%.10lf ", gpu_mem.gpu_eigvectors[(j * covar_matrix.rdim) + i]);
-      }
-      printf("\n");
-    }
-  }
-  grid.sync();
-  return; */
- 
-
   /* Multiply eigenvectors by sqrt of their eigenvalues */
   data_index = grid_index;
   int col_index = data_index / covar_matrix.rdim;
@@ -1381,19 +1368,6 @@ void call_device() {
     printf("CUDA error: %s\n", cudaGetErrorString(err));
     return;
   }
-
-  /* DEBUG
-  double* SBOI = (double*) malloc(sizeof(double) * g_vars[2].len);
-  memcpy_to_host(SBOI, g_mem.gpu_Q, sizeof(double) * g_vars[2].len);
-  cudaDeviceSynchronize();
-  for (int i = 0; i < g_vars[2].len; i++) {
-    printf("Q index %d: %lf\n", i, SBOI[i]);
-  } 
-  memcpy_to_host(SBOI, g_mem.gpu_tridiagonal, sizeof(double) * g_vars[3].len);
-  cudaDeviceSynchronize();
-  for (int i = (1999); i < 2199; i++) {
-    printf("tri index %d: %lf\n", i, SBOI[i]);
-  }*/
 
   /* Clean up memory from intermediate evaluations on GPU */
   free_background_mem();

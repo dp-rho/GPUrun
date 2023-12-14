@@ -1,37 +1,66 @@
-# Location of CUDA program, change if needed
-CUDA_HOME = /usr/local/cuda
+#### CUDA LIBS/INC ####
+
+# If CUDA_HOME is set, use its value; otherwise, set it to the default path
+ifeq ($(origin CUDA_HOME), undefined)
+  CUDA_HOME := /usr/local/cuda
+endif
+
+# Get system for installation path to headers/libs
+OS_ARCH := $(shell uname -m)
+
+# NVCC compiler, required to compile .cu files
+NVCC = $(CUDA_HOME)/bin/nvcc
+
+# CUDA headers
+# Check if symlink include exists, if not search for target explicitly
+ifeq ($(wildcard $(CUDA_HOME)/include),)
+    CUDA_INC := $(CUDA_HOME)/targets/$(OS_ARCH)*/include
+    ifeq ($(CUDA_INC),)
+        $(error CUDA include directory not found)
+    endif
+else
+    CUDA_INC := $(CUDA_HOME)/include
+endif
+
+# CUDA libraries
+# Check if symlink include exists, if not search for target explicitly
+ifeq ($(wildcard $(CUDA_HOME)/lib64),)
+    CUDA_LIB := $(CUDA_HOME)/targets/$(OS_ARCH)*/lib
+    ifeq ($(CUDA_LIB),)
+        $(error CUDA lib directory not found)
+    endif
+else
+    CUDA_LIB := $(CUDA_HOME)/lib64
+endif
+
+# Shared libs using name automatically expected in Rcpp package compilation
+PKG_LIBS= -L$(CUDA_LIB) -Wl,-rpath,$(CUDA_LIB) -lcudart
+
+
+#### HEADERS FOR R ####
+
+# Headers for R 
+R_INC := $(shell Rscript -e "cat(R.home('include'))")
 
 # The R_LIBS_USER environment variable, can look to creating script that
 # grabs R_LIBS_USER from R session and writes to Makevars before calling
 # as a more general approach 
 R_LIBS_USER := $(firstword $(subst :, ,$(R_LIBS_USER)))
 
-# Shared libs using name automatically expected in Rcpp package compilation
-PKG_LIBS= -L$(CUDA_HOME)/lib64 -Wl,-rpath,$(CUDA_HOME)/lib64 -lcudart
-
-
-#########################################
-
-# Headers for R 
-R_INC = /usr/share/R/include
-
 # Specific Rcpp headers
 RCPP_INC = $(R_LIBS_USER)/Rcpp/include
 
-# NVCC compiler, required to compiled .cu files
-NVCC = $(CUDA_HOME)/bin/nvcc
 
-# CUDA headers
-CUDA_INC = $(CUDA_HOME)/include
-
-# CUDA library
-CUDA_LIB = $(CUDA_HOME)/lib64
+#### FLAGS ####
 
 # Libs needed for linking .o objects compiled from .cu and .cpp files 
 LIBS = -lcudart -d
 
+# Get compute capacity of NVIDIA GPU
+CUDA_CC := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '.')
+
 # Flags needed in nvcc compilation from .cu to .o
-NVCC_FLAGS = -Xcompiler "-fPIC" -g -O3 -std=c++17 --diag-suppress 177 -gencode arch=compute_50,code=sm_50 -gencode arch=compute_60,code=sm_60 -gencode arch=compute_70,code=\"compute_70,sm_70\"
+NVCC_FLAGS = -Xcompiler "-fPIC" -g -O3 -std=c++17 --diag-suppress 177 -gencode arch=compute_$(CUDA_CC),code=sm_$(CUDA_CC) 
 
 ### Define objects
 cu_sources := $(wildcard *cu)
