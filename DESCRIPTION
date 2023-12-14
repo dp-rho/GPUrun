@@ -14,4 +14,4 @@ Depends:
 	truncnorm,
 	MASS,
 	devtools,
-  usethis
+	usethis
