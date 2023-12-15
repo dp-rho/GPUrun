@@ -38,7 +38,8 @@ The Makevars used for automated compiling assumes the following, review each poi
 - The environment variable `CUDA_HOME` is set to the CUDA installation directory such that target binaries and headers can be found either under `$(CUDA_HOME)/lib64` and `$(CUDA_HOME)/include` (these are generally set as symlinks when using CUDA toolkit) or under `$(CUDA_HOME)/targets/$(OS_ARCH)*/lib` and `$(CUDA_HOME)/targets/$(OS_ARCH)*/include`.  If `CUDA_HOME` is not found, `/usr/local/cuda` will be assumed as `CUDA_HOME`.
 - Rcpp package is installed under `$(R_LIBS_USER)/Rcpp`, R should automatically set this and it can be viewed in an R session with the following command: `> Sys.getenv('R_LIBS_USER')`
 - General R headers (R.h) can be found under `> R.home('include')` in an R session.
-- Compute capacity of the GPU that will be used for execution can be found with nvidia-smi, specifically: `$ nvidia-smi --query-gpu=compute_cap --format=csv,noheader`
+- Compute capacity of the GPU that will be used for execution can be found with nvidia-smi, specifically: 
+`$ nvidia-smi --query-gpu=compute_cap --format=csv,noheader`
 
 
 ## Examples

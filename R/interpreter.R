@@ -6,9 +6,6 @@ DATA_LENGTH <- "len"
 SYNC_GRID <- "grid.sync();"
 DEFAULT_INDEX <- "DEFAULT_DATA_INDEX"
 
-# Load function names from other packages
-rtruncnorm <- truncnorm::rtruncnorm
-
 
 #' @title Parse input expressions and write code to the kernel
 #' 

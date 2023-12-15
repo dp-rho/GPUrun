@@ -1,6 +1,6 @@
 #### CUDA LIBS/INC ####
 
-# If CUDA_HOME is set, use its value; otherwise, set it to the default path
+# If CUDA_HOME is set, use its value, otherwise set it to an assumed default path
 ifeq ($(origin CUDA_HOME), undefined)
   CUDA_HOME := /usr/local/cuda
 endif
@@ -15,7 +15,7 @@ NVCC = $(CUDA_HOME)/bin/nvcc
 # Check if symlink include exists, if not search for target explicitly
 ifeq ($(wildcard $(CUDA_HOME)/include),)
     CUDA_INC := $(CUDA_HOME)/targets/$(OS_ARCH)*/include
-    ifeq ($(CUDA_INC),)
+    ifeq ($(wildcard $(CUDA_INC)),)
         $(error CUDA include directory not found)
     endif
 else
@@ -26,7 +26,7 @@ endif
 # Check if symlink include exists, if not search for target explicitly
 ifeq ($(wildcard $(CUDA_HOME)/lib64),)
     CUDA_LIB := $(CUDA_HOME)/targets/$(OS_ARCH)*/lib
-    ifeq ($(CUDA_LIB),)
+    ifeq ($(wildcard $(CUDA_LIB)),)
         $(error CUDA lib directory not found)
     endif
 else

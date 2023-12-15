@@ -958,8 +958,7 @@ __device__ void solve_rank1_update(int grid_index, int thread_index, int grid_si
       if (gpu_mem.gpu_scratch_memory[col_index] == cur_eigens[i])
         root_exists = 1;
     }
-    if (!root_exists) {
- 
+    if (!root_exists) { 
       double vhat = (1 / (gpu_mem.gpu_scratch_memory[col_index] - 
                           cur_eigens[row_index]) * 
                      v[row_index]);
@@ -977,7 +976,7 @@ __device__ void solve_rank1_update(int grid_index, int thread_index, int grid_si
     sub_problem_offset = sub_problem_index * (2 * merge_size);
     int upper_bound = min(sub_problem_offset + (2 * merge_size), mat_dim);
     for (int i = sub_problem_offset; i < upper_bound; i++) {
-     vhat_norm += pow((gpu_mem.gpu_Qprime[(grid_index * mat_dim) + i]), 2);
+      vhat_norm += pow((gpu_mem.gpu_Qprime[(grid_index * mat_dim) + i]), 2);
     }
     vhat_norm = sqrt(vhat_norm);
     for (int i = sub_problem_offset; i < upper_bound; i++) {

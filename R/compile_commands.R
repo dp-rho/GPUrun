@@ -7,11 +7,13 @@ RLIBS <- "libs"
 #' @description
 #' Parses the list of input R expressions into CUDA code, including dimensional
 #' information executed on CPU prior to GPU device call. Also compiles the 
-#' generated machine code into a pseduo R package that can be called using
+#' generated machine code into a pseudo R package that can be called using
 #' run_commands.
 #' 
 #' @param expr_ls A character string representing the unparsed expression
 #' for which the dimensions are to be identified.
+#' @param quiet A boolean which controls whether pseudo package building is
+#' displayed.
 #' 
 #' @returns A commands objects that holds the meta information necessary for
 #' executing the compiled commands from a specified environment.
