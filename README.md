@@ -42,7 +42,7 @@ The Makevars used for automated compiling assumes the following, review each poi
 - General R headers (R.h) can be found under `> R.home('include')` in an R session.
 - Compute capacity of the GPU that will be used for execution can be found with nvidia-smi, specifically: 
 
-`$ nvidia-smi --query-gpu=compute_cap --format=csv,noheader`
+    `$ nvidia-smi --query-gpu=compute_cap --format=csv,noheader`
 
 
 ## Examples
