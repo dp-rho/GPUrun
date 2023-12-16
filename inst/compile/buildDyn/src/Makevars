@@ -23,7 +23,7 @@ else
 endif
 
 # CUDA libraries
-# Check if symlink include exists, if not search for target explicitly
+# Check if symlink lib exists, if not search for target explicitly
 ifeq ($(wildcard $(CUDA_HOME)/lib64),)
     CUDA_LIB := $(CUDA_HOME)/targets/$(OS_ARCH)*/lib
     ifeq ($(wildcard $(CUDA_LIB)),)

@@ -1,5 +1,7 @@
 # GPUrun
-Rcpp package that utilizes CUDA to enable fully out of the box GPU computation of basic R expressions via compilation and linking of machine generated .cu and .cpp code.  Requires CUDA 9.0+ and Linux OS.
+Rcpp package that utilizes CUDA to enable fully out of the box GPU computation of basic R expressions via compilation and linking of machine generated .cu and .cpp code.  Requires CUDA 9.0+ and Linux OS. 
+
+*~Under Development~*
 
 ## Overview of Implementation and Functionality
 GPUrun is designed for high performance execution of R expressions which operate on strictly numerical data of up to two dimensions.  Only functions explicitly listed here can be included in these expressions.  It is relatively easy to implement any new highly parallel function. Implementing functions which are inherently sequential is possible, but it cannot be done efficiently, as all computation is executed on the GPU.  In general, expressions compiled and executed by GPUrun should mimic the functionality of native R implementations, with some notable restrictions.
@@ -39,6 +41,7 @@ The Makevars used for automated compiling assumes the following, review each poi
 - Rcpp package is installed under `$(R_LIBS_USER)/Rcpp`, R should automatically set this and it can be viewed in an R session with the following command: `> Sys.getenv('R_LIBS_USER')`
 - General R headers (R.h) can be found under `> R.home('include')` in an R session.
 - Compute capacity of the GPU that will be used for execution can be found with nvidia-smi, specifically: 
+
 `$ nvidia-smi --query-gpu=compute_cap --format=csv,noheader`
 
 

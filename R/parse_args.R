@@ -1,3 +1,35 @@
+#' @title Retrieve compiled parsed arguments for an expression
+#' 
+#' @description
+#' Identify the compiled references or data of a function call, note that these
+#' may be either default global Rvar references, or intermediate eval references
+#' that exist only to store intermediate evaluations inside nested matrix
+#' function calls.  Note that this may also return additional lines of text
+#' that must be evaluated prior to the current expression
+#' 
+#' @param fun_str A character string representing the function
+#' itself, this is needed only to identify the arguments' starting locations.
+#' @param expr_chars A character string representing the unparsed expression
+#' for which the argument references are to be retrieved.
+#' @param var_names A character vector that represents the the named R variables
+#' included in these commands.
+#' @param index An integer that determines which index is used to retrieve data
+#' @param type A character vector, either "data" or "ref" to determine the 
+#' type of argument needed, either a Rvar ref, or data from the .data field of
+#' a parsed Rvar.
+#' @param var_mapping A character vector that determines which type of Rvar
+#' will be parsed, either on CPU or GPU memory, and in either global R variable
+#' storage or the intermediate evaluation storage.
+#' @param allocate_intermediate_exprs A Boolean indicating whether intermediate
+#' evaluations should be allocated and returned as additional lines of code
+#' that must be executed prior to the parsed argument references being used.
+#' If this is false, it means the call is being used only to parse dimensional
+#' information and not as part of the top level parsing call used to generate
+#' the actual code in the kernel function.
+#' @param input_args A vector of characters that allows input specification of
+#' the raw arguments to be parsed. This is used when arguments of the same function
+#' are parsed with different settings, as parse_args can be called on separate
+#' portions of the arguments with distinct inputs.
 parse_args <- function(fun_str, 
                        expr_chars,
                        var_names, 
@@ -6,7 +38,8 @@ parse_args <- function(fun_str,
                        var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                                        CPU_INTERMEDIATE_EVAL_MAPPING),
                        depth = 0,
-                       allocate_intermediate_exprs = TRUE
+                       allocate_intermediate_exprs = TRUE,
+                       input_args = NULL
 ) {
   
   # Match args
@@ -14,63 +47,79 @@ parse_args <- function(fun_str,
   index <- match.arg(index)
   var_mapping <- match.arg(var_mapping)
   
-  args_start <- nchar(fun_str) + 2
-  args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-  parsed_args <- list()
+  if (is.null(input_args)) {
+    args_start <- nchar(fun_str) + 2
+    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
+  }
+  else args <- input_args
+  parsed_args <- c()
   additional_lines <- c()
   
   for (i in seq_along(args)) {
     
-    # Check case where the argument is a void return type function call,
-    # this means an intermediate evaluation will be needed as no value will
-    # be directly returned by the parsed expression
-    void_index <- which(startsWith(args[i], RAW_VOID_RET_FUNS))
-    if (length(void_index)) {
+    # Var index has not yet been identified
+    var_index <- -1
+    mapping <- 'NO_MAPPING'
+
+    # Check if intermediate expressions must be allocated
+    if (allocate_intermediate_exprs) {
       
-      var_index <- which(args[i] == var_names)
-      if (length(var_index)) ref_type <- RVAR_REF
-      else ref_type <- INT_EVAL_REF
-      
-      # Identify whether CPU or GPU memory is requested, GPU parsing is called
-      # first, and this is when intermediate allocations are requested, so if
-      # no intermediate evaluation parsing is requested, type is CPU, else GPU
-      if (allocate_intermediate_exprs) {
-        
-        intermediate_evaluations <- get_intermediate_evaluation(args[i], var_names)
-        additional_lines <- c(additional_lines, intermediate_evaluations)
-        
-        # Identify the correct GPU mapping, whether it is global Rvars or 
-        # intermediate evaluations, and also identify correct index to access 
-        # the specific Rvar that is required
-        mapping <- paste(GPU_PARSING, ref_type, sep = "_")
-        if (!length(var_index)) var_index <- g_int_eval_env$count
-        
-        # TRANSLATE VARIABLE RATHER THAN GET REF SINCE VECTOR MATH
-        # IS PARENT FUNCTION
-        parsed_args[[i]] <- translate_variable(var_index, var_mapping=mapping)
+      # Case where the argument is a defined R variable
+      gvar_index <- which(args[i] == var_names)
+      if (length(gvar_index))  {
+        var_index <- gvar_index
+        mapping <- GPU_MAPPING
       }
+
+      # If a reference is needed, or if data is needed but the argument
+      # does not automatically return data, allocate intermediate expression
+      else if (type == 'ref' || 
+               length(which(startsWith(args[i], RAW_VOID_RET_FUNS)))) {
+        intermediate_evaluations <- get_intermediate_evaluation(args[i], 
+                                                                var_names)
+        additional_lines <- c(additional_lines, intermediate_evaluations)
+
+        var_index <- g_int_eval_env$count
+        mapping <- GPU_INTERMEDIATE_EVAL_MAPPING
+      }
+      # If we have not identified a reference, parse the expression for data
+      # using parse_expr, this expression must be a non void return function
+      if (var_index == -1) {
+        parsed_lines <- parse_expr(args[i], var_names=var_names,
+                                   index=index, type='data',
+                                   var_mapping=var_mapping, 
+                                   allocate_intermediate_exprs=TRUE)
+        
+        # If this expression required intermediate evaluations, store them
+        if (length(parsed_lines) > 1) {
+          additional_lines <- c(additional_lines, 
+                                parsed_lines[1:(length(parsed_lines) - 1)])
+        }
+        
+        parsed_args[i] <- parsed_lines[length(parsed_lines)]
+      }
+      
+      # If reference is identified and type is 'ref' we return the Rvar 
+      # structure as a reference
+      else if (type == 'ref') {
+        parsed_args[i] <- get_ref(var_index, var_mapping=mapping)
+      }
+      
+      # If a reference is identified by type is data, return data from the
+      # index specified as an argument
       else {
-        
-        # Get the compiled code array name of the selected reference type
-        mapping <- paste(CPU_PARSING, ref_type, sep = "_")
-        
-        # Parse the argument using the identified mapping, in this case the only
-        # thing returned from parse_expr will be a Rvar ref with memory type 
-        # dependent on the mapping generated in this function
-        parsed_args[[i]] <- parse_expr(args[i], var_names=var_names,
-                                       index=index, type='ref',
-                                       var_mapping=mapping, depth=depth,
-                                       allocate_intermediate_exprs=FALSE)
+        parsed_args[i] <- translate_variable(var_index, index=index,
+                                             var_mapping=mapping)
       }
     }
+    
+    # Case where we are only parsing for dimensions
     else {
-      parsed_args[[i]] <- parse_expr(args[i], var_names=var_names, depth=depth,
-                                     index=index, allocate_intermediate_exprs=allocate_intermediate_exprs)
-      additional_lines <- c(additional_lines, get_additional_lines(parsed_args[i]))
+      parsed_args[i] <- parse_expr(args[i], var_names=var_names, depth=depth,
+                                   index=index, type=type,
+                                   allocate_intermediate_exprs=FALSE)
     }
   }
-  
-  cur_args <- sapply(parsed_args, function(vec) { vec[length(vec)] })
-  
-  return(list(additional_lines=additional_lines, cur_args=cur_args))
+
+  return(list(additional_lines=additional_lines, cur_args=parsed_args))
 }

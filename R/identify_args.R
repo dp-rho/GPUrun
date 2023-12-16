@@ -21,7 +21,6 @@ identify_args <- function(expr_chars) {
   args <- c()
   while (cur_pos <= nchar(expr_chars)) {
     arg_len <- identify_arg(substr(expr_chars, cur_pos, nchar(expr_chars)))
-    # browser()
     if (arg_len == IS_NULL_ARG) {
       arg_chars <- NULL_ARG
     }

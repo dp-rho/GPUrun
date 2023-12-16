@@ -31,11 +31,8 @@ PARSED_RTRUNC_FUN <- "rtruncnorm_device"
 RAW_MVRNORM_FUN <- paste0(OPEN_EXPR, "mvrnorm")
 PARSED_MVRNORM_FUN <- "mvrnorm_device"
 
-RAW_TWO_PARAM_RS <- c(RAW_RUNIF_FUN, RAW_RNORM_FUN)
-PARSED_TWO_PARAM_RS <- c(PARSED_RUNIF_FUN, PARSED_RNORM_FUN)
-
-RAW_SAMPLING_FUNS <- c(RAW_TWO_PARAM_RS, RAW_RTRUNC_FUN)
-PARSED_SAMPLING_FUNS <- c(PARSED_TWO_PARAM_RS, PARSED_RTRUNC_FUN)
+RAW_VEC_RS <- c(RAW_RUNIF_FUN, RAW_RNORM_FUN, RAW_RTRUNC_FUN)
+PARSED_VEC_RS <- c(PARSED_RUNIF_FUN, PARSED_RNORM_FUN, PARSED_RTRUNC_FUN)
 
 RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
 PARSED_MAT_MUL_FUN <- "mat_mul"
@@ -161,8 +158,8 @@ parse_expr <- function(
   if (expr_chars %in% g_int_eval_env$expr_to_eval_map &
       !allocate_intermediate_exprs) {
     var_index <- which(g_int_eval_env$expr_to_eval_map == expr_chars)
-    if (length(var_index > 1)) var_index = var_index[1]
-    return(get_ref(var_index, var_mapping = var_mapping))
+    if (length(var_index > 1)) var_index <- var_index[1]
+    return(get_ref(var_index, var_mapping=GPU_INTERMEDIATE_EVAL_MAPPING))
   }
   
   # General case: The form of (fun ...)
@@ -184,7 +181,6 @@ parse_expr <- function(
       cur_expr <- paste0("-(", cur_args, ")")
       return(c(additional_lines, cur_expr))
     }
-    
     cur_expr <- paste0(PARSED_MATH_FUNS[math_index], "(", cur_args[1],
                        ", ", cur_args[2], ")")
     return(c(additional_lines, cur_expr))
@@ -202,30 +198,17 @@ parse_expr <- function(
     return(c(additional_lines, cur_expr))
   }
   
-  # Check random number generation for two parameter random sample
-  rs_index <- which(startsWith(expr_chars, RAW_TWO_PARAM_RS))
+  # Check vectorized random sampling
+  rs_index <- which(startsWith(expr_chars, RAW_VEC_RS))
   if (length(rs_index) != 0) {
-    parsed_info <- parse_args(RAW_TWO_PARAM_RS, expr_chars,
-                              var_names=var_names, depth=depth, index=index,
-                              type=type, var_mapping=var_mapping, 
-                              allocate_intermediate_exprs=allocate_intermediate_exprs)
-    additional_lines <- parsed_info$additional_lines
-    cur_args <- parsed_info$cur_args
-    cur_expr <- paste0(PARSED_TWO_PARAM_RS[rs_index], "(", cur_args[1], ", ", 
-                       cur_args[2], ", ", RANDOM_STATE, ")")
-    return(c(additional_lines, cur_expr))
-  }
-  
-  # Check truncated normal distribution sampling
-  if (startsWith(expr_chars, RAW_RTRUNC_FUN)) {
-    parsed_info <- parse_args(RAW_RTRUNC_FUN, expr_chars,
+    parsed_info <- parse_args(RAW_VEC_RS[rs_index], expr_chars,
                               var_names=var_names, depth=depth, index=index, 
                               type=type, var_mapping=var_mapping, 
                               allocate_intermediate_exprs=allocate_intermediate_exprs)
     additional_lines <- parsed_info$additional_lines
     cur_args <- parsed_info$cur_args
     compiled_args <- paste(cur_args[2:length(cur_args)], collapse=", ")
-    cur_expr <- paste0(PARSED_RTRUNC_FUN, "(", compiled_args, ", ", RANDOM_STATE, ")")
+    cur_expr <- paste0(PARSED_VEC_RS[rs_index], "(", compiled_args, ", ", RANDOM_STATE, ")")
     return(c(additional_lines, cur_expr))
   }
 
@@ -374,16 +357,14 @@ parse_expr <- function(
     return(unlist(parsed_args, recursive = FALSE, use.names = FALSE))
   }
   
-  # Check for paren function, i.e., '('
+  # Check for paren function, i.e., '(', special case where we simply
+  # parse the first and only argument 
   if (startsWith(expr_chars, RAW_PAREN_FUN)) {
-    parsed_info <- parse_args(RAW_PAREN_FUN, expr_chars,
-                              var_names=var_names, depth=depth, index=index, 
-                              type=type, var_mapping=var_mapping, 
-                              allocate_intermediate_exprs=allocate_intermediate_exprs)
-    additional_lines <- parsed_info$additional_lines
-    cur_args <- parsed_info$cur_args
-    cur_line <- paste0("(", cur_args[1], ")")
-    return(c(additional_lines, cur_line))
+    arg_chars <- substr(expr_chars, nchar(RAW_PAREN_FUN) + 2, 
+                        nchar(expr_chars) - 1)
+    return(parse_expr(arg_chars, var_names=var_names, depth=depth,
+                      index=index, type=type, var_mapping=var_mapping,
+                      allocate_intermediate_exprs=allocate_intermediate_exprs))
   }
   
   # Check vectorized ifelse function

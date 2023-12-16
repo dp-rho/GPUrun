@@ -46,7 +46,7 @@ __device__ double dunif_device(double a, double b) {
 
 /*
  * Generate an exponential random variable with in scale
- * NOTE: Taken from rexp source code
+ * NOTE: Implementation adapted from rexp source code
  */
 
 __device__ double rexp_device(double scale, curandState_t* random_state) {
@@ -130,7 +130,7 @@ __device__ double dnorm_device(double x, double mean, double sd) {
 
 /*
  * Generate a truncated normal variable with mean and standard deviation sd
- * NOTE: Implementation taken directly from Rtruncnorm package
+ * NOTE: Implementation adapted directly from Rtruncnorm package
  */
 
 

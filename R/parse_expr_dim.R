@@ -103,13 +103,13 @@ parse_expr_dim <- function(
     }
   }
   
-  # Two parameter random samples
-  rs_index <- which(startsWith(expr_chars, RAW_SAMPLING_FUNS))
+  # Vectorized random sampling
+  rs_index <- which(startsWith(expr_chars, RAW_VEC_RS))
   if (length(rs_index) != 0) {
     
-    args_start <- nchar(PARSED_SAMPLING_FUNS[rs_index]) + 2
+    args_start <- nchar(RAW_VEC_RS[rs_index]) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    
+
     # Vector argument for n is simply taken to be the first value of the vector,
     # size of vector is not used as in base R
     n <- parse_expr(args[1], var_names=var_names, index=DEFAULT_INDEX,
@@ -158,8 +158,12 @@ parse_expr_dim <- function(
 
     # The dimension of an elementwise math function is always the max of the 
     # arguments' dimensions
-    dims <- lapply(DIMS, function(dim_type) {paste0("max(", parsed_args[[1]][[dim_type]], 
-                                             ", ", parsed_args[[2]][[dim_type]], ")")})
+    dims <- lapply(DIMS, 
+                   function(dim_type) {
+                     paste0("max(", parsed_args[[1]][[dim_type]], 
+                            ", ", parsed_args[[2]][[dim_type]], ")")
+                   }
+                  )
     names(dims) <- DIMS
     
     return(dims)
@@ -184,6 +188,8 @@ parse_expr_dim <- function(
   
   # Check for paren function, i.e., '('
   if (startsWith(expr_chars, RAW_PAREN_FUN)) {
+    
+    # Dimension is deteremined by the size of argument 1
     args_start <- nchar(RAW_PAREN_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     parsed_arg <- parse_expr_dim(args[1], var_names=var_names, type=type)
@@ -192,6 +198,8 @@ parse_expr_dim <- function(
   
   # Check vectorized ifelse function
   if (startsWith(expr_chars, RAW_IFELSE_FUN)) {
+    
+    # Dimension is determined by the size of argument 1
     args_start <- nchar(RAW_IFELSE_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
     parsed_arg <- parse_expr_dim(args[1], var_names=var_names, type=type)
@@ -200,10 +208,16 @@ parse_expr_dim <- function(
 
   # Check matrix dimension function
   if (startsWith(expr_chars, RAW_MAT_FUN)) {
+    
+    # Dimension is specified explicitly by args 2 and 3 by value
     args_start <- nchar(RAW_MAT_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_args <- lapply(args[2:length(args)], parse_expr, var_names=var_names, index=DEFAULT_INDEX,
-                          var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
+    parsed_info <- parse_args(RAW_MAT_FUN, expr_chars, var_names,
+                              index=DEFAULT_INDEX, type='ref', 
+                              var_mapping=CPU_MAPPING,
+                              allocate_intermediate_exprs=FALSE,
+                              input_args=args[2:length(args)])
+    parsed_args <- parsed_info$cur_args
     return(list(len=paste0(parsed_args[1], " * ", parsed_args[2]),
                 rdim=parsed_args[1], cdim=parsed_args[2]))
   }
@@ -214,10 +228,9 @@ parse_expr_dim <- function(
     # Identify the matrix argument references, do not allocate additional
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
-    parsed_info <- get_matrix_arg_refs(expr_chars, RAW_MAT_MUL_FUN, var_names,
-                                       allocate_intermediate_exprs=FALSE)
-    parsed_args <- parsed_info$parsed_args
-    
+    parsed_info <- parse_args(RAW_MAT_MUL_FUN, expr_chars, var_names,
+                              type='ref', allocate_intermediate_exprs=FALSE)
+    parsed_args <- parsed_info$cur_args
     return(list(len = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE, " * ", 
                              parsed_args[2], FIELD_OF, CDIM_TYPE),
                 rdim = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE),
@@ -230,22 +243,23 @@ parse_expr_dim <- function(
     # Identify the matrix argument references, do not allocate additional
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
-    parsed_info <- get_matrix_arg_refs(expr_chars, RAW_TRANSPOSE_FUN, var_names,
-                                       allocate_intermediate_exprs=FALSE)
-    parsed_args <- parsed_info$parsed_args
+    parsed_info <- parse_args(RAW_TRANSPOSE_FUN, expr_chars, var_names,
+                              type='ref', allocate_intermediate_exprs=FALSE)
+    parsed_args <- parsed_info$cur_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),
                 rdim = paste0(parsed_args[1], FIELD_OF, CDIM_TYPE),
                 cdim = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE)))
   }
   
+  # Check inverse function
   if (startsWith(expr_chars, RAW_INVERSE_FUN)) {
-    # Identify the matrix argument references, do not allocate additional
-    # intermediate evaluations, those are allocated during top level parsing
-    # calls of parse_expr, not dimensional parsing, which occurs after
-    parsed_info <- get_matrix_arg_refs(expr_chars, RAW_INVERSE_FUN, var_names,
-                                       allocate_intermediate_exprs=FALSE)
-    parsed_args <- parsed_info$parsed_args
+    
+    # Identify the matrix argument references, the dimension is equal to 
+    # the dimension of argument one
+    parsed_info <- parse_args(RAW_INVERSE_FUN, expr_chars, var_names,
+                              type='ref', allocate_intermediate_exprs=FALSE)
+    parsed_args <- parsed_info$cur_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),
                 rdim = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE),
