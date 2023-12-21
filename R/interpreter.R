@@ -24,6 +24,11 @@ DEFAULT_INDEX <- "DEFAULT_DATA_INDEX"
 #' interpreter(expr_ls, var_names)
 interpreter <- function(expr_ls, var_names) {
   
+  # Get location of .json data and load function meta info
+  fun_info_path <- system.file("data", package = "GPUrun")
+  json_data <- file.path(fun_info_path, "function_data.json")
+  g_fun_env$fun_dict <- fromJSON(json_data)
+  
   # get location of compile directory
   compile_path <- system.file("compile", package = "GPUrun")
   

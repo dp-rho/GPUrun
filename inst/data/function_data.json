@@ -1,0 +1,67 @@
+{
+  "full_custom": {
+    "function_key": ["for", "{"],
+    "custom_fun": ["write_for_loop(args, var_names, depth=depth)", 
+                   "write_multi_run(args, var_names, index, type, var_mapping, depth, allocate_intermediate_exprs)"]
+  }, 
+  "math_funs": {
+    "function_key": ["+", "-", "*", "/", "%%"],
+    "parsed_func": ["add", "sub", "mul", "dvs", "mod"],
+    "preprocess_call": ["if (length(parsed_args) == 1) parsed_args <- c('0', parsed_args)"]
+  },
+  "range_fun": {
+    "function_key": [":"],
+    "parsed_func": ["range"],
+    "arg_indices": ["DEFAULT_DATA_INDEX"],
+    "compiled_args": ["R__parsed_args", "R__index"]
+  },
+  "vectorized_rs": {
+    "function_key": ["runif", "rnorm", "rexp", "rtruncnorm"],
+    "parsed_func": ["runif_device", "rnorm_device", "rexp_device", "rtruncnorm_device"],
+    "arg_indices": ["DEFAULT_DATA_INDEX", "R__index", "R__index", "R__index", "R__index"],
+    "compiled_args": ["R__parsed_args[2:length(parsed_args)]", "grid_state"]
+  },
+  "mat_dim": {
+    "function_key": ["matrix"],
+    "arg_indices": ["R__index", "DEFAULT_DATA_INDEX", "DEFAULT_DATA_INDEX"],
+    "override_expr": "parsed_args[1]"
+  },
+  "parentheses": {
+    "function_key": ["par"],
+    "override_expr": "parsed_args[1]"
+  },
+  "matrix_ops": {
+    "function_key": ["%*%", "t"],
+    "parsed_func": ["mat_mul", "transpose"],
+    "types": ["ref"],
+    "compiled_args": ["R__parsed_args", "R__index"]
+  },
+  "index_of": {
+    "function_key": ["["],
+    "types": ["ref", "data", "data"],
+    "preprocess_call": ["parsed_dims <- lapply(identify_args(substr(expr_chars, 4, nchar(expr_chars))), parse_expr_dim, var_names=var_names)"],
+    "override_expr": "paste0(parsed_args[1], \".data[\", parse_index_expr(parsed_args[2:length(parsed_args)], parsed_dims, parsed_args[1]), \"]\")"
+  },
+  "ifelsethen": {
+    "function_key": ["ifelse"],
+    "override_expr": "paste(parsed_args[1], \"?\", parsed_args[2], \":\", parsed_args[3])"
+  },
+  "assign": {
+    "function_key": ["<-"],
+    "types": ["data", "data"],
+    "preprocess_call": ["guard_len_expr <- set_mem_type(parse_expr_dim(args[1], var_names)$len, \"gpu\")", "save_dim_info(expr_chars, g_expr_env)"],
+    "override_expr": "write_assign_loop(parsed_args[1], parsed_args[2], guard_len_expr=guard_len_expr)"
+  },
+  "mat_inv": {
+    "function_key": ["solve"],
+    "types": ["ref"],
+    "override_expr": "paste0(\"inverse(\", paste(parsed_args[1], \"//[[RET::VAL]]\", \"grid_index\", \"//[[TEMP::EVALS]]\", \"grid_size\", \"thread_index\", \"shared_arr\", \"grid\", sep=\", \"), \")\")"
+  },
+  "mvrnorm_sample": {
+    "function_key": ["mvrnorm"],
+    "arg_indices": ["DEFAULT_DATA_INDEX", "_eval_data_index", "_eval_data_index"],
+    "types": ["data", "ref", "ref"],
+    "preprocess_call": ["assign(\"linalg_dims\", append(g_linalg_env$linalg_dims, set_mem_type(paste0(parsed_args[3], \".rdim\"), \"cpu\")), g_linalg_env)"],
+    "override_expr": "paste0(\"mvrnorm_device(\", paste(paste0(parsed_args[2], \".data\"), parsed_args[3], TEMP_RET, SHARED_ARR, \"linalg_vec\", \"grid_size\", \"grid_index\", \"thread_index\", \"//[[TEMP::EVALS]]\", \"grid\", \"grid_state\", sep=\", \"), \")\")"
+  }
+}

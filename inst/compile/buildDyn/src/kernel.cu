@@ -45,12 +45,13 @@ __device__ double dunif_device(double a, double b) {
 
 
 /*
- * Generate an exponential random variable with in scale
+ * Generate an exponential variable with specified rate
  * NOTE: Implementation adapted from rexp source code
  */
 
-__device__ double rexp_device(double scale, curandState_t* random_state) {
-  
+/* Standard exponential sample, implementation adapted from rand_exp()  */
+__device__ double curand_rexp_double(curandState_t* random_state) { 
+
   /* q[k-1] = sum(log(2)^k / k!)  k=1,..,n, */
   /* The highest n (here 16) is determined by q[n-1] = 1.0 */
   /* within standard precision */
@@ -96,7 +97,16 @@ __device__ double rexp_device(double scale, curandState_t* random_state) {
     i++;
   } while (u > q[i]);
 
-  return (a + umin * q[0]) * scale;
+  return (a + umin * q[0]);
+}
+
+/*
+ * Generate an exponential random variable with input rate
+ */
+
+__device__ double rexp_device(double rate, curandState_t* random_state) {
+  double scale = 1.0 / rate;
+  return scale * curand_rexp_double(random_state);
 }
 
 
@@ -107,6 +117,7 @@ __device__ double rexp_device(double scale, curandState_t* random_state) {
 __device__ double dexp_device(double x, double scale) {
   return (1 / scale) * exp(-x / scale);
 }
+
 
 /*
  * Generate a normal random variable with mean mu and standard deviation sd
@@ -132,7 +143,6 @@ __device__ double dnorm_device(double x, double mean, double sd) {
  * Generate a truncated normal variable with mean and standard deviation sd
  * NOTE: Implementation adapted directly from Rtruncnorm package
  */
-
 
 /* Exponential rejection sampling (a,inf) */
 __device__ double ers_a_inf(double a, curandState_t* random_state) {
@@ -1337,7 +1347,7 @@ void call_device() {
          max_evals);
   
 
-  /* Retrieve random seed from R  */
+  /* TODO: Retrieve random seed from R  */
   unsigned long long random_seed = 420;
 
   // [[Lin.Alg::start]]

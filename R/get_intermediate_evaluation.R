@@ -20,11 +20,11 @@
 get_intermediate_evaluation <- function(
     arg, 
     var_names
+    # type = c('data', 'ref')
 ) {
 
-  # If argument is a global variable, we do not need to evaluate it in an 
-  # intermediate step, the data will be directly read from a global Rvar
-  if (arg %in% var_names) return(NULL)
+  # Match args
+  # type <- match.arg(type)
   
   # General case where the argument is itself an expression to be evaluated,
   # thus we will create an intermediate evaluation Rvar structure and 
@@ -54,11 +54,28 @@ get_intermediate_evaluation <- function(
   # by this process
   save_dim_info(arg, g_expr_env)
   
+  # Grab intermediate Rvar reference when the entire data array
+  # is needed (in the case of functions which take the return address as an
+  # argument)
+  if (length(which(startsWith(arg, RAW_VOID_RET_FUNS)))) {
+    intermediate_arg <- get_ref(g_int_eval_env$count,
+                                var_mapping=GPU_INTERMEDIATE_EVAL_MAPPING)
+  }
+  
+  # Get the exact data location to write to as an expression
+  else {
+    intermediate_arg <- translate_variable(g_int_eval_env$count,
+                                           index=EVAL_DATA_INDEX,
+                                           var_mapping=GPU_INTERMEDIATE_EVAL_MAPPING)
+  }
+  guard_len_expr <- set_mem_type(parse_expr_dim(arg, var_names)$len, "gpu")
+
   # Create compiled code to assign the intermediate expression's value to 
   # the newly created intermediate expression Rvar structure
-  final_expr_assign_lines <- write_assign_loop(g_int_eval_env$count,
+  final_expr_assign_lines <- write_assign_loop(intermediate_arg,
                                                current_int_expr,
-                                               var_mapping = GPU_INTERMEDIATE_EVAL_MAPPING)
+                                               guard_len_expr,
+                                               var_mapping=GPU_INTERMEDIATE_EVAL_MAPPING)
 
   # Return any further nested intermediate evaluations, then currently
   # evaluated intermediate evaluation, and then sync the grid to ensure that

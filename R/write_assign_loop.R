@@ -33,27 +33,29 @@ TEMP_EVALS <- "//[[TEMP::EVALS]]"
 #' @examples
 #' write_assign_loop(var_index, eval_expr)
 write_assign_loop <- function(
-    var_index, 
+    assignment_expr, 
     eval_expr,
+    guard_len_expr,
     var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                     CPU_INTERMEDIATE_EVAL_MAPPING),
-    guard_len_expr = NULL,
     index_offset_expr = NULL
 ) {
+  
+  
   # Match args
-  var_mapping <- match.arg(var_mapping)
+  # var_mapping <- match.arg(var_mapping)
   
   # Identify the correct Rvar structure and associated len value, the var len 
   # determines how many evaluations are needed in each thread
-  var_ref <- get_ref(var_index, var_mapping =  var_mapping)
-  var_len <- paste0(var_ref, ".len")
+  # var_ref <- get_ref(var_index, var_mapping =  var_mapping)
+  # var_len <- paste0(var_ref, ".len")
   
   # Special case where the function being assigned directly handles
   # the assignment to target memory
   void_index <- which(startsWith(eval_expr, VOID_RET_FUNS))
   if (length(void_index) != 0) {
     cur_evals_per_thread <- paste0(EVALS_PER_THREAD, "[", as.character(g_expr_env$count - 1), "]")
-    eval_expr <- gsub(TEMP_RET, paste0(var_ref, ".", "data"), eval_expr, fixed = TRUE)
+    eval_expr <- gsub(TEMP_RET, paste0(assignment_expr, ".", "data"), eval_expr, fixed = TRUE)
     eval_expr <- gsub(TEMP_EVALS, cur_evals_per_thread, eval_expr, fixed = TRUE)
     return(paste0(eval_expr, ";"))
   }
@@ -73,7 +75,7 @@ write_assign_loop <- function(
   update_storage  <- c(
     paste0("if (", needed_evals, " > ", "MAX_EVALS_PER_THREAD) {"),
     indent_lines(c(
-      paste(STORE_RESULT, PARSED_ASSIGN_FUN, SCRATCH_MEM, ";"),
+      paste(STORE_RESULT, PARSED_ASSIGN_FUN, 'gpu_mem.gpu_scratch_memory', ";"),
       paste(STORAGE_INDEX, PARSED_ASSIGN_FUN, GRID_ID, ";"),
       paste(STORAGE_INC, PARSED_ASSIGN_FUN, "grid_size", ";"))),
     "}"
@@ -99,12 +101,12 @@ write_assign_loop <- function(
   
   # The Rvar structure that will have its data field updated at the unique
   # data evaluation index determined by the block, thread, and evaluation loop
-  update_results <- paste0(var_ref, ".data[", EVAL_DATA_INDEX, "]")
-  
+  # update_results <- paste0(var_ref, ".data[", EVAL_DATA_INDEX, "]")
+  update_results <- assignment_expr
   # Special case to use the index offset expression (already parsed) instead
-  if (!is.null(index_offset_expr)) {
-    update_results <- paste0(var_ref, ".data[", index_offset_expr, "]")
-  }
+  # if (!is.null(index_offset_expr)) {
+  #   update_results <- paste0(var_ref, ".data[", index_offset_expr, "]")
+  # }
   
   # initialize the index that will iterate over the __shared__ memory array,
   # this is initialized as the thread index (from 0 - 255) of the current block
@@ -144,12 +146,12 @@ write_assign_loop <- function(
   )
   
   # Initialize the guard_len variable used to control overflow
-  init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, var_len, ";")
+  init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, guard_len_expr, ";")
   
   # Special case where an index assignment uses an already parsed expression
-  if (!is.null(guard_len_expr)) {
-    init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, guard_len_expr, ";")
-  }
+  # if (!is.null(guard_len_expr)) {
+  #   init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, guard_len_expr, ";")
+  # }
   
   # To avoid memory errors, do not assign values past the selected Rvar's len
   assignment_len_guard <- paste0("if (", EVAL_DATA_INDEX, " >= ", GUARD_LEN, ") break")

@@ -13,13 +13,15 @@ CDIM_TYPE <- "cdim"
 FIELD_OF <- "."
 DIMS <- c(LEN_TYPE, RDIM_TYPE, CDIM_TYPE)
 
+# Global environment for function meta data
+g_fun_env <- new.env(parent=.GlobalEnv)
 
 # Create environments for globally tracking interpreter variables used 
 # in parsing dimensional information 
-g_loop_env <- new.env(parent = .GlobalEnv)
-g_expr_env <- new.env(parent = .GlobalEnv)
-g_int_eval_env <- new.env(parent = .GlobalEnv)
-g_linalg_env <- new.env(parent = .GlobalEnv)
+g_loop_env <- new.env(parent=.GlobalEnv)
+g_expr_env <- new.env(parent=.GlobalEnv)
+g_int_eval_env <- new.env(parent=.GlobalEnv)
+g_linalg_env <- new.env(parent=.GlobalEnv)
 
 
 # The functions used to write the stored dimensional information into the  

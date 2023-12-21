@@ -133,7 +133,6 @@ parse_expr_dim <- function(
                             var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)
     
     mu_size <- paste0(parsed_mu, FIELD_OF, LEN_TYPE)
-    
     # The number of evaluations needed is equivalent to S, yet the returned
     # object has size equal to len(mu) * n
     if (type == 'return_size') { 
@@ -212,9 +211,8 @@ parse_expr_dim <- function(
     # Dimension is specified explicitly by args 2 and 3 by value
     args_start <- nchar(RAW_MAT_FUN) + 2
     args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-    parsed_info <- parse_args(RAW_MAT_FUN, expr_chars, var_names,
-                              index=DEFAULT_INDEX, type='ref', 
-                              var_mapping=CPU_MAPPING,
+    parsed_info <- parse_args(RAW_MAT_FUN, expr_chars, var_names, 
+                              var_mapping=CPU_MAPPING, indices=DEFAULT_INDEX,
                               allocate_intermediate_exprs=FALSE,
                               input_args=args[2:length(args)])
     parsed_args <- parsed_info$cur_args
@@ -229,7 +227,7 @@ parse_expr_dim <- function(
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
     parsed_info <- parse_args(RAW_MAT_MUL_FUN, expr_chars, var_names,
-                              type='ref', allocate_intermediate_exprs=FALSE)
+                              types='ref', allocate_intermediate_exprs=FALSE)
     parsed_args <- parsed_info$cur_args
     return(list(len = paste0(parsed_args[1], FIELD_OF, RDIM_TYPE, " * ", 
                              parsed_args[2], FIELD_OF, CDIM_TYPE),
@@ -244,7 +242,7 @@ parse_expr_dim <- function(
     # intermediate evaluations, those are allocated during top level parsing
     # calls of parse_expr, not dimensional parsing, which occurs after
     parsed_info <- parse_args(RAW_TRANSPOSE_FUN, expr_chars, var_names,
-                              type='ref', allocate_intermediate_exprs=FALSE)
+                              types='ref', allocate_intermediate_exprs=FALSE)
     parsed_args <- parsed_info$cur_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),
@@ -258,7 +256,8 @@ parse_expr_dim <- function(
     # Identify the matrix argument references, the dimension is equal to 
     # the dimension of argument one
     parsed_info <- parse_args(RAW_INVERSE_FUN, expr_chars, var_names,
-                              type='ref', allocate_intermediate_exprs=FALSE)
+                              indices=DEFAULT_INDEX,
+                              types='ref', allocate_intermediate_exprs=FALSE)
     parsed_args <- parsed_info$cur_args
     
     return(list(len = paste0(parsed_args[1], FIELD_OF, LEN_TYPE),

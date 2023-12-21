@@ -5,13 +5,14 @@ Version: 1.0
 Date: 2023-05-08
 Author: David Rowe
 Maintainer: David Rowe <david@rowe-stats.com>
-Description: Interprets and compiles basic R expressions operating on vectors and matrices using machine generated CUDA code in combination with included C++ code.  The compiled objects are linked and loaded into the R session as an .so object via R's package infastructure.  These compiled commands can then be evaluated in parallel any number of times using an NVIDIA GPU.
+Description: Interprets and compiles basic R expressions operating on vectors and matrices using machine generated CUDA code in combination with included C++ code.  The compiled objects are linked and loaded into the R session as an .so object via Rcpp's package building infastructure.  These compiled commands can then be evaluated in parallel any number of times using an NVIDIA GPU.
 License: GPL (>= 2)
 Imports: Rcpp (>= 1.0.10)
 LinkingTo: Rcpp
 RoxygenNote: 7.2.3
 Depends:
+	jsonlite,
 	truncnorm,
 	MASS,
-	devtools,
-	usethis
+	usethis,
+	devtools

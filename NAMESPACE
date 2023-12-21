@@ -1,4 +1,5 @@
 importFrom(Rcpp, evalCpp)
 importFrom(truncnorm, rtruncnorm)
 importFrom(MASS, mvrnorm)
+importFrom(jsonlite, fromJSON)
 exportPattern("^[[:alpha:]]+")

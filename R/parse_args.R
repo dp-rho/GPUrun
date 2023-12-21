@@ -30,21 +30,20 @@
 #' the raw arguments to be parsed. This is used when arguments of the same function
 #' are parsed with different settings, as parse_args can be called on separate
 #' portions of the arguments with distinct inputs.
-parse_args <- function(fun_str, 
-                       expr_chars,
-                       var_names, 
-                       index = c(EVAL_DATA_INDEX, STORAGE_INDEX, DEFAULT_INDEX, LOOP_ITER_VARS), 
-                       type = c("data", "ref"), 
-                       var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
-                                       CPU_INTERMEDIATE_EVAL_MAPPING),
-                       depth = 0,
-                       allocate_intermediate_exprs = TRUE,
-                       input_args = NULL
+parse_args <- function(
+    fun_str, 
+    expr_chars,
+    var_names, 
+    indices = EVAL_DATA_INDEX,
+    types = 'data', 
+    var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
+                    CPU_INTERMEDIATE_EVAL_MAPPING),
+    depth = 0,
+    allocate_intermediate_exprs = TRUE,
+    input_args = NULL
 ) {
   
   # Match args
-  type <- match.arg(type)
-  index <- match.arg(index)
   var_mapping <- match.arg(var_mapping)
   
   if (is.null(input_args)) {
@@ -54,6 +53,14 @@ parse_args <- function(fun_str,
   else args <- input_args
   parsed_args <- c()
   additional_lines <- c()
+  
+  # Extend index/type to all arguments if only one input
+  if (length(indices) == 1) {
+    indices <- rep(indices, length(args))
+  }
+  if (length(types) == 1){
+    types <- rep(types, length(args))
+  }
   
   for (i in seq_along(args)) {
     
@@ -73,20 +80,22 @@ parse_args <- function(fun_str,
 
       # If a reference is needed, or if data is needed but the argument
       # does not automatically return data, allocate intermediate expression
-      else if (type == 'ref' || 
+      else if (types[i] == 'ref' || 
                length(which(startsWith(args[i], RAW_VOID_RET_FUNS)))) {
         intermediate_evaluations <- get_intermediate_evaluation(args[i], 
-                                                                var_names)
+                                                                var_names)#,
+                                                                # type=types[i])
         additional_lines <- c(additional_lines, intermediate_evaluations)
 
         var_index <- g_int_eval_env$count
         mapping <- GPU_INTERMEDIATE_EVAL_MAPPING
       }
+      
       # If we have not identified a reference, parse the expression for data
       # using parse_expr, this expression must be a non void return function
       if (var_index == -1) {
         parsed_lines <- parse_expr(args[i], var_names=var_names,
-                                   index=index, type='data',
+                                   index=indices[i], type='data',
                                    var_mapping=var_mapping, 
                                    allocate_intermediate_exprs=TRUE)
         
@@ -101,14 +110,14 @@ parse_args <- function(fun_str,
       
       # If reference is identified and type is 'ref' we return the Rvar 
       # structure as a reference
-      else if (type == 'ref') {
+      else if (types[i] == 'ref') {
         parsed_args[i] <- get_ref(var_index, var_mapping=mapping)
       }
       
       # If a reference is identified by type is data, return data from the
       # index specified as an argument
       else {
-        parsed_args[i] <- translate_variable(var_index, index=index,
+        parsed_args[i] <- translate_variable(var_index, index=indices[i],
                                              var_mapping=mapping)
       }
     }
@@ -116,7 +125,7 @@ parse_args <- function(fun_str,
     # Case where we are only parsing for dimensions
     else {
       parsed_args[i] <- parse_expr(args[i], var_names=var_names, depth=depth,
-                                   index=index, type=type,
+                                   index=indices[i], type=types[i],
                                    allocate_intermediate_exprs=FALSE)
     }
   }

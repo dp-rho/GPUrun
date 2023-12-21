@@ -60,7 +60,7 @@ write_for_loop <- function(
   update_iter_lines <- paste(translate_variable(var_index, mod_len = FALSE,
                                                 index = DEFAULT_INDEX), 
                              PARSED_ASSIGN_FUN, parse_expr(args[2], var_names,
-                                                           depth = depth, index = iter_index),
+                                                           depth=depth, index=iter_index),
                              ";")
   
   # We must sync the entire grid after updating the iteration variable, as other threads
@@ -70,7 +70,7 @@ write_for_loop <- function(
   
   # Recursive call to parse the expression (can actually be multiple expressions using '{' function) 
   # executed by this for loop
-  execute_line <- parse_expr(args[3], var_names, depth = depth + 1)
+  execute_line <- parse_expr(args[3], var_names, depth=depth + 1)
   
   
   # The full lines of text for the parsed loop, includes the update to the iteration variable,

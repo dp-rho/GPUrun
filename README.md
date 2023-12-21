@@ -16,17 +16,20 @@ GPUrun is designed for high performance execution of R expressions which operate
 - Hardware limitations for GPU computation will vary.  The defined constant `MAX_EVALS_PER_THREAD` determines the size of a \_\_shared\_\_ array used for temporary storage of evaluations.  The size of the array is equal to `MAX_EVALS_PER_THREAD * THREADS_PER_BLOCK * sizeof(double)`.  This constant can be adjusted up or down to accomodate the amount of \_\_shared\_\_ memory available.  Current implementations limit mvrnorm() such that the covariance matrix does not have dimension greater than `MAX_EVALS_PER_THREAD * THREADS_PER_BLOCK / 2`, and any matrix passed to solve() does not have dimension greater than `MAX_EVALS_PER_THREAD * THREADS_PER_BLOCK`.  Global dynamic memory on a GPU is also generally more limited than that available to the CPU, and all data included in any expression is copied to GPU global memory as doubles, as well as some background allocation.
 
 ### Implemented functions
+Note that **ALL** arguments must be specified explicitly, default arguments are not currently implemented.
+
 - Elementwise basic math, specifically, `+, -, *, /, %%` implemented as following R's rules for dimension mismatching
 - Assignment, `<-`
 - Parentheses, `( )`
-- Multiple expression run, `{ }`
+- Multiple expression run, `{ }`, however unliked native R implementation, there is no return value from this function call
 - Range operator, `:`
-- Matrix creation, i.e., explicitly converting a vector or matrix to a new matrix with specified dimensions, `matrix()`, both ncol and nrow must be explicitly specified, byrow and dimnames are not supported.
-- Matrix multiplication and matrix transpose, `%*%, t()`
+- Matrix creation, i.e., explicitly converting a vector or matrix to a new matrix with specified dimensions, `matrix()`, byrow and dimnames are not implemented
+- Matrix multiplication and matrix transpose, `%*%, t()`, however, there are no implicit transformations from vectors to matrices, so `matrix()` must be called on any vector the user wishes to pass to a function that operates on matrices
 - Matrix inverse, `solve()`, however this function is only implemented for finding the inverse of the first argument, not for the general case of a %*% x = b.
-- Random sampling, `rnorm(), runif(), rtruncnorm(), mvrnorm()`, all arguments must be specificed explicitly, default arguments not currently implemented, tol, empirical, EISPACK not implemented for mvrnorm, and mvrnorm is artificially constrained for simplicity to n=1 sample for each call.
-- Elementwise if/else, `ifelse()`.
-- Indexing for both reading and writing (i.e., assignment) in up to two dimensions, `[]`, note that only defined R variables can be indexed, not general expressions, so something like this is not allowed `y <- (x + 3)[1]`, where as this would be `y[1:2, 5:7] <- x[2:3, 1:3]`
+- Vectorized random sampling, `rnorm(), runif(), rexp(), rtruncnorm()`
+- Multivariate normal sampling, `mvrnorm()`, tol, empirical, and EISPACK not implemented and current implementation is also restrained to n=1 samples
+- Elementwise if/else, `ifelse()`
+- Indexing for both reading and writing (i.e., assignment) in up to two dimensions, `[]`
 - For loop iteration, `for (_ in _) _`
 
 ### Compiling process
