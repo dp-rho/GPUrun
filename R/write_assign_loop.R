@@ -52,20 +52,20 @@ write_assign_loop <- function(
   
   # Special case where the function being assigned directly handles
   # the assignment to target memory
-  void_index <- which(startsWith(eval_expr, VOID_RET_FUNS))
+  void_index <- which(startsWith(eval_expr, g_fun_env$void_rets_parsed))
   if (length(void_index) != 0) {
     cur_evals_per_thread <- paste0(EVALS_PER_THREAD, "[", as.character(g_expr_env$count - 1), "]")
-    eval_expr <- gsub(TEMP_RET, paste0(assignment_expr, ".", "data"), eval_expr, fixed = TRUE)
-    eval_expr <- gsub(TEMP_EVALS, cur_evals_per_thread, eval_expr, fixed = TRUE)
+    eval_expr <- gsub(TEMP_RET, paste0(assignment_expr, ".", "data"), eval_expr, fixed=TRUE)
+    eval_expr <- gsub(TEMP_EVALS, cur_evals_per_thread, eval_expr, fixed=TRUE)
     return(paste0(eval_expr, ";"))
   }
   
   # statements to set the initial default state of the storage variables
   set_storage <- c(
-    paste(STORE_RESULT, PARSED_ASSIGN_FUN, SHARED_ARR, ";"),
-    paste(STORAGE_INDEX, PARSED_ASSIGN_FUN, THREAD_ID, ";"),
-    paste(STORAGE_INC, PARSED_ASSIGN_FUN, "THREADS_PER_BLOCK", ";"),
-    paste(EVAL_DATA_INDEX, PARSED_ASSIGN_FUN, GRID_ID, ";")
+    paste(STORE_RESULT, "=", SHARED_ARR, ";"),
+    paste(STORAGE_INDEX, "=", THREAD_ID, ";"),
+    paste(STORAGE_INC, "=", "THREADS_PER_BLOCK", ";"),
+    paste(EVAL_DATA_INDEX, "=", GRID_ID, ";")
   )
   
   # Evaluations needed per thread 
@@ -75,18 +75,18 @@ write_assign_loop <- function(
   update_storage  <- c(
     paste0("if (", needed_evals, " > ", "MAX_EVALS_PER_THREAD) {"),
     indent_lines(c(
-      paste(STORE_RESULT, PARSED_ASSIGN_FUN, 'gpu_mem.gpu_scratch_memory', ";"),
-      paste(STORAGE_INDEX, PARSED_ASSIGN_FUN, GRID_ID, ";"),
-      paste(STORAGE_INC, PARSED_ASSIGN_FUN, "grid_size", ";"))),
+      paste(STORE_RESULT, "=", 'gpu_mem.gpu_scratch_memory', ";"),
+      paste(STORAGE_INDEX, "=", GRID_ID, ";"),
+      paste(STORAGE_INC, "=", "grid_size", ";"))),
     "}"
   )
   
   # Only reset the increment variables
   set_increments <- c(
-    paste(" ", EVAL_DATA_INDEX, PARSED_ASSIGN_FUN, GRID_ID, ";"),
+    paste(" ", EVAL_DATA_INDEX, "=", GRID_ID, ";"),
     paste("if (", needed_evals, ">", "MAX_EVALS_PER_THREAD)", 
-          STORAGE_INDEX, PARSED_ASSIGN_FUN, GRID_ID, ";"),
-    paste("else ", STORAGE_INDEX, PARSED_ASSIGN_FUN, THREAD_ID, ";")
+          STORAGE_INDEX, "=", GRID_ID, ";"),
+    paste("else ", STORAGE_INDEX, "=", THREAD_ID, ";")
   )
 
 
@@ -110,7 +110,7 @@ write_assign_loop <- function(
   
   # initialize the index that will iterate over the __shared__ memory array,
   # this is initialized as the thread index (from 0 - 255) of the current block
-  initialize_shared_mem_index <- paste0(paste(STORAGE_INDEX, PARSED_ASSIGN_FUN, THREAD_ID), ";")
+  initialize_shared_mem_index <- paste0(paste(STORAGE_INDEX, "=", THREAD_ID), ";")
   
   # The line of code that creates the evaluation loop scope, this iterates 
   # based on the len of the data and by extension the number of evaluations needed
@@ -127,7 +127,7 @@ write_assign_loop <- function(
   
   # Stores the evaluated data in the __shared__ memory array while continued
   # evaluations take place
-  store_command <- paste(store_results, PARSED_ASSIGN_FUN, eval_expr)
+  store_command <- paste(store_results, "=", eval_expr)
   
   # Update the __shared__ memory index, which is different than the global 
   # data index, as the __shared__ memory index is repeated by the threads with
@@ -146,18 +146,18 @@ write_assign_loop <- function(
   )
   
   # Initialize the guard_len variable used to control overflow
-  init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, guard_len_expr, ";")
+  init_guard_len <- paste(GUARD_LEN, "=", guard_len_expr, ";")
   
   # Special case where an index assignment uses an already parsed expression
   # if (!is.null(guard_len_expr)) {
-  #   init_guard_len <- paste(GUARD_LEN, PARSED_ASSIGN_FUN, guard_len_expr, ";")
+  #   init_guard_len <- paste(GUARD_LEN, "=", guard_len_expr, ";")
   # }
   
   # To avoid memory errors, do not assign values past the selected Rvar's len
   assignment_len_guard <- paste0("if (", EVAL_DATA_INDEX, " >= ", GUARD_LEN, ") break")
   
   # Update the global Rvar structure with a value from the __shared__ memory 
-  update_command <- paste(update_results, PARSED_ASSIGN_FUN, store_results)
+  update_command <- paste(update_results, "=", store_results)
   
   # Create the code for the loop that updates the global Rvar using the values
   # stored in the __shared__memory array

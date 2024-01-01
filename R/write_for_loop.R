@@ -59,7 +59,7 @@ write_for_loop <- function(
   # which is 0 in compiled code and 1 in R code.  
   update_iter_lines <- paste(translate_variable(var_index, mod_len = FALSE,
                                                 index = DEFAULT_INDEX), 
-                             PARSED_ASSIGN_FUN, parse_expr(args[2], var_names,
+                             "=", parse_expr(args[2], var_names,
                                                            depth=depth, index=iter_index),
                              ";")
   

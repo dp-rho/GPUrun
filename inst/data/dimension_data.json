@@ -1,0 +1,68 @@
+{
+ "math_funs": {
+    "function_key": ["+", "-", "*", "/", "%%"],
+    "len": "if (length(parsed_dims) == 1) parsed_dims[[1]]$len else paste0(\"max(\", parsed_dims[[1]]$len, \", \", parsed_dims[[2]]$len, \")\")",
+    "rdim": "if (length(parsed_dims) == 1) parsed_dims[[1]]$rdim else paste0(\"max(\", parsed_dims[[1]]$rdim, \", \", parsed_dims[[2]]$rdim, \")\")",
+    "cdim": "if (length(parsed_dims) == 1) parsed_dims[[1]]$cdim else paste0(\"max(\", parsed_dims[[1]]$cdim, \", \", parsed_dims[[2]]$cdim, \")\")"
+  },
+  "range_fun": {
+    "function_key": [":"],
+    "parse_vals": "parsed_args <- parse_args(args, expr_chars, var_names, indices=\"DEFAULT_DATA_INDEX\", var_mapping=\"g_vars\", allocate_intermediate_exprs=FALSE)$cur_args",
+    "len": "paste0(\"(int) floor((double) abs(\", parsed_args[2], \" - \", parsed_args[1],  \")  + 1)\")",
+    "rdim": "0",
+    "cdim": "0"
+  },
+  "vectorized_rs": {
+    "function_key": ["runif", "rnorm", "rexp", "rtruncnorm"],
+    "parse_vals": "n <- parse_expr(args[1], var_names=var_names, index=DEFAULT_INDEX, var_mapping=CPU_MAPPING, allocate_intermediate_exprs=FALSE)",
+    "len": "n",
+    "rdim": "0",
+    "cdim": "0"
+  },
+  "mat_dim": {
+    "function_key": ["matrix"],
+    "parse_vals" : "parsed_args <- parse_args(args[2:3], expr_chars, var_names, var_mapping=\"g_vars\", indices=\"DEFAULT_DATA_INDEX\", allocate_intermediate_exprs=FALSE)$cur_args",
+    "len": "paste0(parsed_args[1], \" * \", parsed_args[2])",
+    "rdim": "parsed_args[1]",
+    "cdim": "parsed_args[2]"
+  },
+  "mat_mul": {
+    "function_key": ["%*%"],
+    "len": "paste(parsed_dims[[1]]$rdim, \"*\", parsed_dims[[2]]$cdim)",
+    "rdim": "parsed_dims[[1]]$rdim",
+    "cdim": "parsed_dims[[2]]$cdim"
+
+  },
+  "mat_transpose": {
+    "function_key": ["t"],
+    "len": "parsed_dims[[1]]$len",
+    "rdim": "parsed_dims[[1]]$cdim",
+    "cdim": "parsed_dims[[1]]$rdim"
+
+  },
+  "index_of": {
+    "function_key": ["["],
+    "len": "if (length(parsed_dims) == 2) parsed_dims[[2]]$len else if (parsed_dims[[2]]$len == 0) paste(parsed_dims[[1]]$rdim, \"*\", parsed_dims[[3]]$len) else if (parsed_dims[[3]]$len == 0) paste(parsed_dims[[1]]$cdim, \"*\", parsed_dims[[2]]$len) else paste(parsed_dims[[2]]$len, \"*\", parsed_dims[[3]]$len)",
+    "rdim": "if (length(parsed_dims) == 2) 0 else if (parsed_dims[[2]]$len == 0) parsed_dims[[1]]$rdim else parsed_dims[[2]]$len",
+    "cdim": "if (length(parsed_dims) == 2) 0 else if (parsed_dims[[3]]$len == 0) parsed_dims[[1]]$cdim else parsed_dims[[3]]$len"
+  },
+  "assign": {
+    "function_key": ["<-"],
+    "len": "parsed_dims[[2]]$len",
+    "rdim": "parsed_dims[[2]]$rdim",
+    "cdim": "parsed_dims[[2]]$cdim"
+  },
+  "first_arg_return": {
+    "function_key": ["solve", "par", "ifelse"],
+    "len": "parsed_dims[[1]]$len",
+    "rdim": "parsed_dims[[1]]$rdim",
+    "cdim": "parsed_dims[[1]]$cdim"
+  },
+  "mvrnorm_sample": {
+    "function_key": ["mvrnorm"],
+    "parse_vals": "parsed_args <- parse_args(args, expr_chars, var_names, indices=\"DEFAULT_DATA_INDEX\", var_mapping=\"g_vars\", allocate_intermediate_exprs=FALSE)$cur_args",
+    "len": "if (dim_type == \"return_size\") paste0(parsed_args[1], \" * \", parsed_dims[[2]]$len) else paste0(parsed_dims[[2]]$len, \" * \", parsed_dims[[2]]$len)",
+    "rdim": "if (dim_type == \"return_size\") parsed_args[1] else parsed_dims[[2]]$len",
+    "cdim": "parsed_dims[[2]]$len"
+  }
+}

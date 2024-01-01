@@ -26,8 +26,12 @@ interpreter <- function(expr_ls, var_names) {
   
   # Get location of .json data and load function meta info
   fun_info_path <- system.file("data", package = "GPUrun")
-  json_data <- file.path(fun_info_path, "function_data.json")
-  g_fun_env$fun_dict <- fromJSON(json_data)
+  function_json_data <- file.path(fun_info_path, "function_data.json")
+  dimension_json_data <- file.path(fun_info_path, "dimension_data.json")
+  g_fun_env$fun_dict <- fromJSON(function_json_data)
+  g_fun_env$void_rets_raw <- g_fun_env$fun_dict[['void_returns_raw']]
+  g_fun_env$void_rets_parsed <- g_fun_env$fun_dict[['void_returns_parsed']]
+  g_fun_env$dim_dict <- fromJSON(dimension_json_data)
   
   # get location of compile directory
   compile_path <- system.file("compile", package = "GPUrun")

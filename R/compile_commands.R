@@ -34,7 +34,7 @@ compile_commands <- function(expr_ls, quiet=TRUE) {
   interpreter(expr_ls, var_names)
   
   # get location of compile directory
-  compile_path <- system.file("compile", package = "GPUrun")
+  compile_path <- system.file("compile", package="GPUrun")
   
   # get location of pseudo package called PSEUDO_NAME
   pseudo_pkg_dir <- file.path(compile_path, PSEUDO_NAME)
@@ -48,9 +48,8 @@ compile_commands <- function(expr_ls, quiet=TRUE) {
   
   # use devtools to build and install the pseudo package package
   # in order to generate a portable binary .so object
-  devtools::install(pkg = pseudo_pkg_dir,
-                    quiet = quiet,
-                    args = paste0("--library=", install_loc))
+  devtools::install(pkg=pseudo_pkg_dir, quiet=quiet,
+                    args=paste0("--library=", install_loc))
   
   # increment the key values in package meta files
   update_build(current_pkg_key, pseudo_pkg_dir)
@@ -59,9 +58,9 @@ compile_commands <- function(expr_ls, quiet=TRUE) {
   # the compiled code
   return(
     list(
-      exprs = expr_ls,
-      key = current_pkg_key,
-      vars = var_names
+      exprs=expr_ls,
+      key=current_pkg_key,
+      vars=var_names
     )
   )
 }

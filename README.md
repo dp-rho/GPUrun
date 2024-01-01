@@ -49,6 +49,8 @@ The Makevars used for automated compiling assumes the following, review each poi
 
 
 ## Examples
+
+### Basic Use Case
 In general, it is only helpful to execute R commands using GPUrun if they are both notably parallel in nature and computation intensive.  The overhead cost of parsing dimensions and copying data to the GPU makes native R execution far faster in the cases of simple commands, and code which is highly sequential in nature will be slower in all cases if passed to GPUrun.  The following is a simple example of compiling and executing code using GPUrun which will likely see performance improvements during the execution step of the code.
 
 ```
@@ -88,3 +90,173 @@ my_vec <- 1:500000
 # Call the previously compiled commands
 GPUrun::run_commands(compiled_expr_ex, environment())
 ```
+
+### Pratical Example
+Consider the model defined with `Y[i] <- rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i <- 1:dimension_size`.  We can approximate beta using a Markov Chain Monte Carlo (MCMC) method to draw samples from the posterior distribution using Gibbs sampling.
+
+First, initialize the true Beta, X, and Y values.
+
+```
+set.seed(123)
+# The function used to generate a Y sample given X and Beta, this could be implemented more
+# efficiently, but it does not matter as it is only called once and this is conceptuall clear
+generate_sample_y <- function(X, beta) {
+  Y <- numeric(observation_size)
+  for (i in 1:observation_size) {
+    Y[i] <- rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))
+  }
+  Y
+}
+
+# Initialize the true Beta and the values of X and Y sampled
+beta <- rnorm(parameter_size, mean=0, sd=3)
+X <- mvrnorm(n=observation_size, mu=numeric(parameter_size), Sigma=diag(parameter_size))
+Y <- generate_sample_y(X, beta)
+```
+
+Now we write R code to sample from the posterior distribution of beta given Z (variable introduced for the Gibbs sampler).
+
+```
+# Requires truncnorm package
+run_mcmc_parallel <- function(iters, burnin) {
+  beta_cur = rnorm(parameter_size)
+  beta_chain <- matrix(numeric(iters * parameter_size), ncol=parameter_size)
+  
+  for (i in 1:iters) {
+    
+    Xbeta <- X %*% matrix(beta_cur, nrow=parameter_size, ncol=1)
+    Z <- ifelse(Y, 
+                rtruncnorm(observation_size, a=0, b=Inf, Xbeta, sd=1),
+                rtruncnorm(observation_size, a=-Inf, b=0, Xbeta, sd=1))
+
+    S <- solve(t(X) %*% X)
+    mu <-  S %*% t(X) %*% Z
+    
+    beta_cur <- mvrnorm(1, mu, S)
+    beta_chain[i,] <- beta_cur 
+  }
+  
+  return(beta_chain[burnin:iters,])
+}
+```
+
+Any values of `observation_size` and `parameter_size` can be tested using this code, although observation size should be substantially larger (~200x is a safe bet) for estimations that are reasonable accurate. 
+
+We now implement the same code using GPUrun.
+
+```
+# The expression used to run the mcmc
+mcmc_commands <- substitute(
+ for (i in 1:iters) {
+    Xbeta <- X %*% matrix(beta_cur, nrow=parameter_size, ncol=1)
+    Z <- ifelse(Y, 
+                rtruncnorm(observation_size, a=0, b=Inf, Xbeta, sd=1),
+                rtruncnorm(observation_size, a=-Inf, b=0, Xbeta, sd=1))
+    
+    S <- solve(t(X) %*% X)
+    mu <-  S %*% t(X) %*% matrix(Z, nrow=observation_size, ncol=1)
+    
+    beta_cur <- mvrnorm(1, mu, S)
+    beta_chain[i,] <- beta_cur
+  }
+)
+
+# Wrapper function to initialize values
+run_mcmc_gpu <- function(iters, burnin, compiled_commands) {
+  
+  # Init variables by giving them defined sizes
+  beta_cur = rnorm(parameter_size)
+  beta_chain <- matrix(numeric(iters * parameter_size), ncol=parameter_size)
+  Xbeta <- numeric(observation_size)
+  Z <- numeric(observation_size)
+  mu <- numeric(parameter_size)
+  S <- matrix(numeric(parameter_size ^ 2), nrow = parameter_size)
+  i <- 0
+
+  GPUrun::run_commands(compiled_commands, environment())
+  
+  return(beta_chain[burnin:iters,])
+}
+```
+
+Finally, we test both implementations for speed and accuracy.
+
+```
+test_mcmc <- function() {
+  
+  # Assign number of iterations and burnins
+  iters <- 20000
+  burnin <- iters / 2
+    
+  set.seed(123)
+  cat("Testing mcmc native R code ... \n")
+  start <- proc.time()
+  sampled_betas_2 <- run_mcmc_parallel(iters, burnin)
+  cat("Native R efficient code time:\n")
+  print(proc.time() - start)
+  cat(paste0("mean diff estimated vs actual: ", mean(colMeans(sampled_betas_2) - beta), "\n"))
+  
+  # Compile mcmc commands 
+  cat("Compiling commands ...\n")
+  start <- proc.time()
+  compiled_mcmc <- GPUrun::compile_commands(list(mcmc_commands))
+  cat("Compile time:\n")
+  print(proc.time() - start)
+
+  # Call compiled .so lib
+  set.seed(123)
+  cat("Testing mcmc with GPUrun ... \n")
+  start <- proc.time()
+  sampled_betas_3 <- run_mcmc_gpu(iters, burnin, compiled_mcmc)
+  cat("GPUrun execution time:\n")
+  print(proc.time() - start)
+  cat(paste0("mean diff estimated vs actual: ", mean(colMeans(sampled_betas_3) - beta), "\n"))
+
+}
+```
+
+With relatively small dimensions of `observation_size = 1000` and `parameter_size = 5`, an example output is shown below:
+
+```
+> test_mcmc()
+Testing mcmc native R code ... 
+Native R efficient code time:
+   user  system elapsed 
+  13.99    0.02   14.00 
+mean diff estimated vs actual: 0.0502563734918959
+Compiling commands ...
+Compile time:
+   user  system elapsed 
+ 26.043   4.399  30.322 
+Testing mcmc with GPUrun ... 
+Launching 22 blocks with 256 threads per block
+Maximum concurrent evaluation of 1 evals per thread
+GPUrun execution time:
+   user  system elapsed 
+  9.316   0.028   9.339 
+mean diff estimated vs actual: 0.0338725403017393
+```
+
+This is a rather unimpressive performance improvement, especially considering the compile time, however, this model's dimensions do not tend to benefit from massively parallel computation.  Consider instead `observation_size = 20000` and `parameter_size = 100` while also increasing the iterations with `iters = 40000`.
+
+```
+> test_mcmc()
+Testing mcmc native R code ... 
+Native R efficient code time:
+   user   system  elapsed
+6474.362   1.754 6473.959
+mean diff estimated vs actual: -0.0294749809954256
+Compiling commands ...
+Compile time:
+   user  system elapsed
+ 27.553   4.444  32.146
+Testing mcmc with GPUrun ...
+Launching 22 blocks with 256 threads per block
+Maximum concurrent evaluation of 356 evals per thread
+GPUrun execution time:
+   user  system elapsed   
+481.527   0.389 481.606
+mean diff estimated vs actual: -0.0242402119556581
+```
+
+The compiled commands executed on the GPU now run ~13x faster than the default R implementation.  It is clear that as dimensions increase, the relative performance improvement also increases.

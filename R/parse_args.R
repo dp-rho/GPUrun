@@ -31,28 +31,19 @@
 #' are parsed with different settings, as parse_args can be called on separate
 #' portions of the arguments with distinct inputs.
 parse_args <- function(
-    fun_str, 
+    args,
     expr_chars,
-    var_names, 
+    var_names,
     indices = EVAL_DATA_INDEX,
     types = 'data', 
     var_mapping = c(GPU_MAPPING, CPU_MAPPING, GPU_INTERMEDIATE_EVAL_MAPPING,
                     CPU_INTERMEDIATE_EVAL_MAPPING),
     depth = 0,
-    allocate_intermediate_exprs = TRUE,
-    input_args = NULL
+    allocate_intermediate_exprs = TRUE
 ) {
   
   # Match args
   var_mapping <- match.arg(var_mapping)
-  
-  if (is.null(input_args)) {
-    args_start <- nchar(fun_str) + 2
-    args <- identify_args(substr(expr_chars, args_start, nchar(expr_chars)))
-  }
-  else args <- input_args
-  parsed_args <- c()
-  additional_lines <- c()
   
   # Extend index/type to all arguments if only one input
   if (length(indices) == 1) {
@@ -62,6 +53,8 @@ parse_args <- function(
     types <- rep(types, length(args))
   }
   
+  parsed_args <- c()
+  additional_lines <- c()
   for (i in seq_along(args)) {
     
     # Var index has not yet been identified
@@ -81,10 +74,9 @@ parse_args <- function(
       # If a reference is needed, or if data is needed but the argument
       # does not automatically return data, allocate intermediate expression
       else if (types[i] == 'ref' || 
-               length(which(startsWith(args[i], RAW_VOID_RET_FUNS)))) {
+               length(which(startsWith(args[i], g_fun_env$void_rets_raw)))) {
         intermediate_evaluations <- get_intermediate_evaluation(args[i], 
-                                                                var_names)#,
-                                                                # type=types[i])
+                                                                var_names)
         additional_lines <- c(additional_lines, intermediate_evaluations)
 
         var_index <- g_int_eval_env$count

@@ -85,7 +85,7 @@ UPDATE_EXPRS <- list(
   # Intermediate evaluation Rvar case
   'int_eval' = substitute({
     exprs_to_write[[count + 1]] <- parse_expr_dim(cur_expr, var_names, 
-                                                  type='return_size')
+                                                  dim_type='return_size')
     expr_to_eval_map <- append(expr_to_eval_map, cur_expr)
   })
 )

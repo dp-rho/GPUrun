@@ -4,60 +4,7 @@ CLOSE_EXPR <- ")"
 R_INF <- "Inf"
 C_INF <- "DBL_MAX"
 
-RAW_MATH_FUNS <- paste0(OPEN_EXPR, c("+", "-", "*", "/"))
-NEGATIVE_INDEX <- 2
-PARSED_MATH_FUNS <- c("add", "sub", "mul", "dvs")
-
-RAW_RANGE_FUN <- paste0(OPEN_EXPR, ":")
-PARSED_RANGE_FUN <- "range"
-
 RANDOM_STATE <- "grid_state"
-
-RAW_PAREN_FUN <- paste0(OPEN_EXPR, "par")
-
-RAW_IFELSE_FUN <- paste0(OPEN_EXPR, "ifelse")
-
-RAW_MAT_FUN <- paste0(OPEN_EXPR, "matrix")
-
-RAW_RUNIF_FUN <- paste0(OPEN_EXPR, "runif")
-PARSED_RUNIF_FUN <- "runif_device"
-
-RAW_RNORM_FUN <- paste0(OPEN_EXPR, "rnorm")
-PARSED_RNORM_FUN <- "rnorm_device"
-
-RAW_REXP_FUN <- paste0(OPEN_EXPR, "rexp")
-PARSED_REXP_FUN <- "rexp_device"
-
-RAW_RTRUNC_FUN <- paste0(OPEN_EXPR, "rtruncnorm")
-PARSED_RTRUNC_FUN <- "rtruncnorm_device"
-
-RAW_MVRNORM_FUN <- paste0(OPEN_EXPR, "mvrnorm")
-PARSED_MVRNORM_FUN <- "mvrnorm_device"
-
-RAW_VEC_RS <- c(RAW_RUNIF_FUN, RAW_RNORM_FUN, RAW_REXP_FUN, RAW_RTRUNC_FUN)
-PARSED_VEC_RS <- c(PARSED_RUNIF_FUN, PARSED_RNORM_FUN, PARSED_REXP_FUN, PARSED_RTRUNC_FUN)
-
-RAW_MAT_MUL_FUN <- paste0(OPEN_EXPR, "%*%")
-PARSED_MAT_MUL_FUN <- "mat_mul"
-
-RAW_TRANSPOSE_FUN <- paste0(OPEN_EXPR, "t")
-PARSED_TRANSPOSE_FUN <- "transpose"
-
-RAW_INVERSE_FUN <- paste0(OPEN_EXPR, "solve")
-PARSED_INVERSE_FUN <- "inverse"
-
-RAW_ASSIGN_FUN <- paste0(OPEN_EXPR, "<-")
-PARSED_ASSIGN_FUN <- "="
-
-RAW_INDEX_FUN <- paste0(OPEN_EXPR, "[")
-
-RAW_FOR_FUN <- paste0(OPEN_EXPR, "for")
-PARSED_FOR_FUN <- "for"
-
-RAW_MULTI_EXPR_FUN <- paste0(OPEN_EXPR, "{")
-
-VOID_RET_FUNS <- c("inverse", "mvrnorm")
-RAW_VOID_RET_FUNS <- c(RAW_INVERSE_FUN, RAW_MVRNORM_FUN)
 
 LOOP_ITER_VARS <- paste0("i", 0:9)
 

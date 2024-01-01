@@ -20,18 +20,8 @@
 get_intermediate_evaluation <- function(
     arg, 
     var_names
-    # type = c('data', 'ref')
 ) {
 
-  # Match args
-  # type <- match.arg(type)
-  
-  # General case where the argument is itself an expression to be evaluated,
-  # thus we will create an intermediate evaluation Rvar structure and 
-  # evalute the expression, save the values in that Rvar structure, then 
-  # use a reference to the intermediate evaluation Rvar structure as the 
-  # returned value to be passed to the parent expression
-  
   # Parse the expression to get the compiled lines of code necessary to
   # evaluate this intermediate argument, note that it is possible that this 
   # recursive call will itself have intermediate evaluations
@@ -54,10 +44,9 @@ get_intermediate_evaluation <- function(
   # by this process
   save_dim_info(arg, g_expr_env)
   
-  # Grab intermediate Rvar reference when the entire data array
-  # is needed (in the case of functions which take the return address as an
-  # argument)
-  if (length(which(startsWith(arg, RAW_VOID_RET_FUNS)))) {
+  # Grab intermediate Rvar reference when the entire data array is needed for
+  # the case of functions which take the return address as an argument
+  if (length(which(startsWith(arg, g_fun_env$void_rets_raw)))) {
     intermediate_arg <- get_ref(g_int_eval_env$count,
                                 var_mapping=GPU_INTERMEDIATE_EVAL_MAPPING)
   }

@@ -63,5 +63,7 @@
     "types": ["data", "ref", "ref"],
     "preprocess_call": ["assign(\"linalg_dims\", append(g_linalg_env$linalg_dims, set_mem_type(paste0(parsed_args[3], \".rdim\"), \"cpu\")), g_linalg_env)"],
     "override_expr": "paste0(\"mvrnorm_device(\", paste(paste0(parsed_args[2], \".data\"), parsed_args[3], TEMP_RET, SHARED_ARR, \"linalg_vec\", \"grid_size\", \"grid_index\", \"thread_index\", \"//[[TEMP::EVALS]]\", \"grid\", \"grid_state\", sep=\", \"), \")\")"
-  }
+  },
+  "void_returns_raw": ["(solve", "(mvrnorm"],
+  "void_returns_parsed": ["inverse", "mvrnorm_device"]
 }
