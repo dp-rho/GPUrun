@@ -33,7 +33,7 @@ Note that **ALL** arguments must be specified explicitly, default arguments are 
 - For loop iteration, `for (_ in _) _`
 
 ### Compiling process
-The compiling process makes use of the pre-existing Rcpp package building functionality.  Rcpp provides a portable and clean interface for compiling .so libs and linking them to an R package.  The compiled functions which have been registered by the successfully built package can then be executed with the `.Call()` function, although Rcpp packages will hide this functionality behind wrapper R functions that handle the `.Call()` interface under the hood.  GPUrun makes use of devtools in combination with Rcpp to build pseudo packages inside the `compile/installed_libs` directory which are then accessed with machine generated keys.  This method brings with it some overhead in package structure that is unnecessary in exchange for a well maintained and portable method of compiling .cpp and .cu files and linking the resuting .so libs with R sessions.
+The compiling process makes use of the pre-existing Rcpp package building functionality.  Rcpp provides a portable and clean interface for compiling .so libs and linking them to an R package.  The compiled functions which have been registered by the successfully built package can then be executed with the `.Call()` function, although Rcpp packages will hide this functionality behind wrapper R functions that handle the `.Call()` interface under the hood.  GPUrun makes use of devtools in combination with Rcpp to build pseudo packages inside the `compile/compiled_commands` directory which are then accessed with machine generated keys.  This method brings with it some overhead in package structure that is unnecessary in exchange for a well maintained and portable method of compiling .cpp and .cu files and linking the resuting .so libs with R sessions.
 
 #### Windows Compiling
 CUDA is supported on Windows, so why isn't it supported in GPUrun?  Unfortunately, the NVIDIA distributed CUDA compiler (nvcc) is built on MSVC when using Windows, where as it is built on g++ when using Linux.  Rcpp package building uses g++, and objects compiled with MSVC and g++ cannot be linked.  It is theoretically possible, but beyond the scope of this project, to instead rewrite the Rcpp package building process to use MSVC when compiling on Windows.
@@ -92,7 +92,7 @@ GPUrun::run_commands(compiled_expr_ex, environment())
 ```
 
 ### Pratical Example
-Consider the model defined with `Y[i] <- rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i <- 1:dimension_size`.  We can approximate beta using a Markov Chain Monte Carlo (MCMC) method to draw samples from the posterior distribution using Gibbs sampling.
+Consider the model defined with `Y[i] = rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i = 1:observation_size`.  We can approximate beta using a Markov Chain Monte Carlo (MCMC) method to draw samples from the posterior distribution using Gibbs sampling.
 
 First, initialize the true Beta, X, and Y values.
 
