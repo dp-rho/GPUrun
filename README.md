@@ -91,8 +91,8 @@ my_vec <- 1:500000
 GPUrun::run_commands(compiled_expr_ex, environment())
 ```
 
-### Pratical Example
-Consider modeling a binary variable Y defined with `p(Y=1) = Φ(X^T %*% β)`, i.e., logistic regression with dimension of data X having any arbitrary size `parameter_size`.  We can instantiate this model in R using `Y[i] = rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i = 1:observation_size`.  We can then approximate beta using a Markov Chain Monte Carlo (MCMC) method (specifically a Gibbs sampler) to draw estimate the posterior distribution.
+### Practical Example
+Consider modeling a binary variable Y defined with `p(Y=1) = Φ(X^T %*% β)`, i.e., logistic regression with dimension of data X having any arbitrary size `parameter_size`.  Given some data matrix X, we can instantiate this model in R using `Y[i] = rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i = 1:observation_size`.  We can then approximate beta using a Markov Chain Monte Carlo (MCMC) method (with the data augmentation algorithm) to estimate the posterior distribution given our data.
 
 First, initialize the true beta, X, and Y values.
 
@@ -116,7 +116,7 @@ X <- mvrnorm(n=observation_size, mu=numeric(parameter_size), Sigma=diag(paramete
 Y <- generate_sample_y(X, beta)
 ```
 
-Now we write R code to sample from the posterior distribution of beta given Z (variable introduced for the Gibbs sampler).
+Now we write R code to sample from the posterior distribution of beta given Z (variable introduced via data augmentation).
 
 ```
 # Function to run mcmc with input iterations and burning which
