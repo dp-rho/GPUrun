@@ -92,14 +92,16 @@ GPUrun::run_commands(compiled_expr_ex, environment())
 ```
 
 ### Pratical Example
-Consider the model defined with `Y[i] = rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i = 1:observation_size`.  We can approximate beta using a Markov Chain Monte Carlo (MCMC) method to draw samples from the posterior distribution using Gibbs sampling.
+Consider modeling a binary variable Y defined with `p(Y=1) = Φ(X^T %*% β)`, i.e., logistic regression with dimension of data X having any arbitrary size `parameter_size`.  We can instantiate this model in R using `Y[i] = rbinom(1, 1, pnorm((t(X[i,]) %*% beta)))`, for `i = 1:observation_size`.  We can then approximate beta using a Markov Chain Monte Carlo (MCMC) method (specifically a Gibbs sampler) to draw estimate the posterior distribution.
 
-First, initialize the true Beta, X, and Y values.
+First, initialize the true beta, X, and Y values.
 
 ```
 set.seed(123)
-# The function used to generate a Y sample given X and Beta, this could be implemented more
-# efficiently, but it does not matter as it is only called once and this is conceptuall clear
+# The function used to generate a Y sample given X and beta.
+# Note that this could be implemented far more efficiently, however, this
+# function is called only once to create our outcome data and this method
+# is conceptually clear
 generate_sample_y <- function(X, beta) {
   Y <- numeric(observation_size)
   for (i in 1:observation_size) {
@@ -117,7 +119,10 @@ Y <- generate_sample_y(X, beta)
 Now we write R code to sample from the posterior distribution of beta given Z (variable introduced for the Gibbs sampler).
 
 ```
-# Requires truncnorm package
+# Function to run mcmc with input iterations and burning which
+# requires truncnorm and MASS package.
+# Note that we vectorise the if else sampling and X/beta dot product
+# to avoid inefficient interpreted looping in naive R code
 run_mcmc_parallel <- function(iters, burnin) {
   beta_cur = rnorm(parameter_size)
   beta_chain <- matrix(numeric(iters * parameter_size), ncol=parameter_size)
@@ -215,7 +220,7 @@ test_mcmc <- function() {
 }
 ```
 
-With relatively small dimensions of `observation_size = 1000` and `parameter_size = 5`, an example output is shown below:
+With relatively small data dimensions of `observation_size = 1000` and `parameter_size = 5`, an example output is shown below:
 
 ```
 > test_mcmc()
@@ -237,7 +242,7 @@ GPUrun execution time:
 mean diff estimated vs actual: 0.0338725403017393
 ```
 
-This is a rather unimpressive performance improvement, especially considering the compile time, however, this model's dimensions do not tend to benefit from massively parallel computation.  Consider instead `observation_size = 20000` and `parameter_size = 100` while also increasing the iterations with `iters = 40000`.
+This is a rather unimpressive improvement, especially considering the compile time, however, modeling this data does not tend to benefit from massively parallel computation.  In GPUrun's implementation, the dimension of an expression being **less than** `THREADS_PER_BLOCK` (set to 256 by default, but can be changed as desired) times the number of SMs available on the utilized GPU means that any excess threads are idling and performing no useful computation.  There are many such expressions in our code with the provided `parameter_size` and `observation_size`.  Additionally, R's native implementation constantly reallocating memory for each new expression has much less relative cost with such small data. Consider instead `observation_size = 20000` and `parameter_size = 100` while also increasing the iterations with `iters = 40000`.
 
 ```
 > test_mcmc()
@@ -259,4 +264,4 @@ GPUrun execution time:
 mean diff estimated vs actual: -0.0242402119556581
 ```
 
-The compiled commands executed on the GPU now run ~13x faster than the default R implementation.  It is clear that as dimensions increase, the relative performance improvement also increases.
+The compiled commands executed on the GPU now run ~13x faster than the efficient R implementation.  Exact improvement will depend on hardware, but it is clear that as dimensions increase, the relative performance improvement also increases.
